@@ -376,6 +376,15 @@ ny = lambda s: pd.Timestamp(s, tz="America/New_York")  # noqa: E731
 verifier("cours du jour ignoré tant que la séance de New York est ouverte",
          sc.seance_en_cours(idx, ny("2026-10-19 12:20")) and not sc.seance_en_cours(idx, ny("2026-10-19 17:00"))
          and not sc.seance_en_cours(idx, ny("2026-10-20 09:00")))
+jours_p = pd.bdate_range("2026-10-12", "2026-10-19")
+px = pd.DataFrame({"SPY": 1.0, "AAA": 2.0}, index=jours_p)
+vrai_seance = sc.seance_en_cours
+sc.seance_en_cours = lambda index, maintenant=None: True          # séance du 19 encore ouverte
+sc.ETAT_SOURCES["cours"] = {"derniere_seance": "2026-10-19"}
+adj_p, spy_p, _, _ = sc._preparer_prix({"adj": px, "close": px, "splits": px * 0})
+sc.seance_en_cours = vrai_seance
+verifier("séance ouverte ignorée : la dernière séance affichée est la précédente, close",
+         spy_p.index[-1] == pd.Timestamp("2026-10-16") and sc.ETAT_SOURCES["cours"]["derniere_seance"] == "2026-10-16")
 raisons = [sc._raison_insuffisance(pd.Series(r), cfg) for r in [
     {"historique_ok": False}, {"historique_ok": True, "fin": pd.NaT},
     {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 4.0, "actif": 1e9},

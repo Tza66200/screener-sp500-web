@@ -1917,6 +1917,8 @@ def _preparer_prix(prix: Dict[str, pd.DataFrame], ref: str = "SPY"):
     if seance_en_cours(spy.index):
         info(f"Séance du {spy.index[-1].date()} encore ouverte à New York : son cours provisoire est ignoré.")
         spy = spy.iloc[:-1]
+        if "cours" in ETAT_SOURCES and len(spy):
+            ETAT_SOURCES["cours"]["derniere_seance"] = str(spy.index[-1].date())
     garder = [c for c in adj_all.columns if c not in ("SPY", "RSP", "^IRX")]
     adj = adj_all.reindex(spy.index)[garder].ffill(limit=5)
     close_split = prix["close"].reindex(index=spy.index, columns=garder).ffill(limit=5)
