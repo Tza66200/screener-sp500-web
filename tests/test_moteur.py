@@ -101,6 +101,31 @@ x = sc.fondamentaux_aux_dates(pan, [avant, apres], [cik])
 verifier("pas d'anticipation : la veille du dépôt, le 10-K n'est pas visible",
          x.iloc[0]["fin"] < ligne_k["fin"] and x.iloc[1]["fin"] == ligne_k["fin"])
 
+# Nouvelle holding (nouveau CIK) : l'historique de l'ancienne société est repris, à l'identique
+faits3 = sc.extraire_faits(D["jsons"][1003])
+coupure = pd.Timestamp("2018-01-01")
+parts = {9001: faits3[faits3["depot"] < coupure], 9002: faits3[faits3["depot"] >= coupure]}
+
+
+class SECHolding:
+    def faits(self, c):
+        return parts[int(c)].copy()
+
+
+coupure2 = pd.Timestamp("2022-01-01")       # deux réorganisations successives (Avago -> Broadcom Ltd -> Inc.)
+parts = {9001: faits3[faits3["depot"] < coupure], 9002: faits3[(faits3["depot"] >= coupure) & (faits3["depot"] < coupure2)],
+         9003: faits3[faits3["depot"] >= coupure2]}
+sc.PREDECESSEURS.update({9003: 9002, 9002: 9001})
+seul = sc.table_fondamentale(parts[9003])
+fusion = sc.table_fondamentale(sc.faits_societe(SECHolding(), 9003))
+ref = sc.table_fondamentale(faits3)
+verifier("nouvelle holding : historique des sociétés précédentes repris à l'identique (2 réorganisations)",
+         len(seul) < len(ref) and len(fusion) == len(ref)
+         and np.allclose(fusion["fscore"].values, ref["fscore"].values, equal_nan=True)
+         and np.allclose(fusion["revenus"].values, ref["revenus"].values, equal_nan=True),
+         f"{len(seul)} lignes seule, {len(fusion)} avec l'historique, {len(ref)} attendues")
+del sc.PREDECESSEURS[9003], sc.PREDECESSEURS[9002]
+
 # ---------------------------------------------------------------------------
 print("\n2. Filtres, scores, signaux, portefeuille")
 cfg = sc.Config(email="test@domaine-test.org", dossier=SORTIE, n_positions=6, seuil_achat=80)
@@ -135,6 +160,13 @@ verifier("banques : couverture et FCF ignorés", not f.loc["X6":"X9", "echec_fil
          and "Volatilité" in f.at["X10", "motif"] and "Couverture" not in f.at["X10", "motif"])
 verifier("10 % les plus volatils exclus", bool(f.at["X11", "echec_filtre"]) and "Volatilité" in f.at["X11", "motif"])
 verifier("F-score des banques ramené sur 9", abs(f.at["X6", "fscore_9"] - 6 * 9 / 7) < 1e-9)
+dfn = df.copy()
+dfn.loc[["X0", "X6"], "fscore_n"] = 5
+dfn.loc[["X0", "X6"], "fscore"] = 4
+fn5 = sc.appliquer_filtres(dfn, cfg)
+verifier("F-score sur 5 critères : suffisant pour une financière (5 sur 7), pas pour une autre (6 sur 9)",
+         abs(fn5.at["X6", "fscore_9"] - 4 * 9 / 5) < 1e-9 and np.isnan(fn5.at["X0", "fscore_9"])
+         and not fn5.at["X0", "donnees_ok"] and fn5.at["X6", "donnees_ok"])
 dfa = df.copy()
 dfa["accruals"] = [-0.05, -0.04, -0.03, -0.02, -0.01, -0.005] + [0.0] * 6
 fa = sc.appliquer_filtres(dfa, cfg)

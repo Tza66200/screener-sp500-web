@@ -122,10 +122,12 @@ def reglages_publics(cfg: sc.Config) -> dict:
 
 
 def empreinte(cfg: sc.Config, options: dict) -> str:
-    """Change dès qu'un réglage ou la version du moteur change : le backtest est alors recalculé."""
+    """Change dès qu'un réglage, la version du moteur ou les étiquettes comptables lues changent :
+    le backtest est alors recalculé."""
     d = reglages_publics(cfg)
     d["_options"] = options
     d["_moteur"] = sc.VERSION
+    d["_extraction"] = sc.EMPREINTE_EXTRACTION
     return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
@@ -521,9 +523,9 @@ def publier_secours(args, message: str, detail: str) -> bool:
 # Programme principal
 # ---------------------------------------------------------------------------
 
-def diagnostic_sec(cfg: sc.Config, classement: pd.DataFrame, dossier: str, maximum: int = 50) -> None:
+def diagnostic_sec(cfg: sc.Config, classement: pd.DataFrame, dossier: str, maximum: int = 60) -> None:
     """Copie brute des comptes SEC des sociétés dont une donnée clé manque, pour en trouver la cause :
-    actions sans signal, dette ou couverture des intérêts inconnues, surprise de résultats incalculable."""
+    actions sans signal, dette, free cash-flow ou couverture des intérêts inconnus, surprise incalculable."""
     import gzip
     c = classement
     sans = c["signal"] == "DONNÉES INSUFFISANTES"
@@ -532,8 +534,9 @@ def diagnostic_sec(cfg: sc.Config, classement: pd.DataFrame, dossier: str, maxim
     groupes = [
         ("sans signal", sans),
         ("dette inconnue", nonfin & c["dette"].isna()),
-        ("couverture inconnue", nonfin & c["couverture"].isna() & (pd.to_numeric(c["dette"], errors="coerce") > 0)),
+        ("free cash-flow inconnu", nonfin & c["rend_fcf"].isna()),
         ("surprise inconnue", ~sans & c["surprise"].isna()),
+        ("couverture inconnue", nonfin & c["couverture"].isna() & (pd.to_numeric(c["dette"], errors="coerce") > 0)),
     ]
     choix: Dict[str, dict] = {}
     for raison, masque in groupes:

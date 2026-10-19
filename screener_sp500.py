@@ -47,6 +47,8 @@ from __future__ import annotations
 
 import argparse
 import base64
+import glob
+import hashlib
 import html
 import io
 import json
@@ -68,7 +70,7 @@ import requests
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-VERSION = "1.2"
+VERSION = "1.3"
 
 
 # ===========================================================================
@@ -704,6 +706,9 @@ TAGS: Dict[str, List[str]] = {
     "cout_revenus": ["CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold", "CostOfServices",
                      "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization"],
     "marge_brute": ["GrossProfit"],
+    # Total des charges d'exploitation : CA = résultat d'exploitation + charges quand le CA n'a qu'une
+    # étiquette propre à la société, absente de l'API (APA Corporation)
+    "couts_totaux": ["CostsAndExpenses"],
     "resultat_exploitation": ["OperatingIncomeLoss"],
     "resultat_avant_impot": [
         "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
@@ -711,7 +716,8 @@ TAGS: Dict[str, List[str]] = {
     "resultat_net": ["NetIncomeLoss", "NetIncomeLossAvailableToCommonStockholdersBasic", "ProfitLoss"],
     "impot": ["IncomeTaxExpenseBenefit"],
     "charges_interets": ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt",
-                         "InterestAndDebtExpense", "InterestExpenseOperating"],
+                         "InterestAndDebtExpense", "InterestExpenseOperating", "InterestExpenseLongTermDebt",
+                         "InterestCostsIncurred"],      # intérêts encourus, y compris capitalisés (promoteurs)
     # Intérêts nets (négatifs = charge nette) et intérêts payés : solutions de repli pour la couverture
     "interets_nets": ["InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"],
     "interets_payes": ["InterestPaidNet", "InterestPaid"],
@@ -725,7 +731,9 @@ TAGS: Dict[str, List[str]] = {
     "capex": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
               "PaymentsForCapitalImprovements", "PaymentsToAcquireOtherPropertyPlantAndEquipment",
               "PaymentsToAcquireOtherProductiveAssets", "PaymentsToAcquireOilAndGasPropertyAndEquipment",
-              "PaymentsToAcquireOilAndGasProperty", "PaymentsToDevelopRealEstateAssets"],
+              "PaymentsToAcquireOilAndGasProperty", "PaymentsToExploreAndDevelopOilAndGasProperties",
+              "PaymentsToDevelopRealEstateAssets",
+              "SegmentExpenditureAdditionToLongLivedAssets"],   # total des secteurs (ASU 2023-07), en dernier recours
     "amortissements": ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet",
                        "DepreciationAndAmortization", "Depreciation"],
     "sga": ["SellingGeneralAndAdministrativeExpense", "GeneralAndAdministrativeExpense"],
@@ -747,22 +755,51 @@ TAGS: Dict[str, List[str]] = {
                         "DebtAndCapitalLeaseObligations", "NotesPayable"],      # long terme, échéances < 1 an incluses
     "dette_lt_nc": ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermNotesPayable",
                     "SeniorLongTermNotes", "UnsecuredLongTermDebt", "ConvertibleDebtNoncurrent",
-                    "OtherLongTermDebtNoncurrent"],                             # long terme, part > 1 an
+                    "ConvertibleLongTermNotesPayable", "OtherLongTermDebtNoncurrent"],   # long terme, part > 1 an
     "dette_lt_courante": ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent",
-                          "NotesPayableCurrent"],                               # échéances < 1 an
+                          "NotesPayableCurrent", "ConvertibleNotesPayableCurrent"],      # échéances < 1 an
     "dette_courante": ["DebtCurrent"],                                          # tout le court terme
     "emprunts_ct": ["ShortTermBorrowings", "CommercialPaper", "OtherShortTermBorrowings", "LinesOfCreditCurrent"],
+    # Lignes du bilan des foncières (REIT), additionnées faute de total : obligations, emprunts non garantis,
+    # hypothèques, lignes de crédit, autres billets (Digital Realty, Extra Space Storage)
+    "dette_obligations": ["SeniorNotes"],
+    "dette_non_garantie": ["UnsecuredDebt"],
+    "dette_garantie": ["SecuredDebt"],
+    "dette_ligne_credit": ["LineOfCredit", "LongTermLineOfCredit"],
+    "dette_autres_billets": ["OtherNotesPayable"],
     "creances": ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent", "AccountsNotesAndLoansReceivableNetCurrent"],
     "immobilisations": ["PropertyPlantAndEquipmentNet",
                         "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization"],
 }
 INTERETS = ("charges_interets", "interets_nets", "interets_payes")
-FLUX = {"revenus", "cout_revenus", "marge_brute", "resultat_exploitation", "resultat_avant_impot",
+COMPOSANTES_DETTE = ("dette_obligations", "dette_non_garantie", "dette_garantie", "dette_ligne_credit",
+                     "dette_autres_billets")
+# Charges et décaissements, positifs par nature : certains dépôts en inversent le signe (Disney, Fortive)
+CONCEPTS_POSITIFS = {"charges_interets", "interets_payes", "capex", "amortissements", "sga", "cout_revenus",
+                     "couts_totaux"}
+FLUX = {"revenus", "cout_revenus", "marge_brute", "couts_totaux", "resultat_exploitation", "resultat_avant_impot",
         "resultat_net", "impot", "charges_interets", "interets_nets", "interets_payes", "flux_dette",
         "cfo", "capex", "amortissements", "sga"}
 STOCK = set(TAGS) - FLUX
 FORMULAIRES = {"10-K", "10-K/A", "10-Q", "10-Q/A", "10-KT", "10-KT/A", "10-QT", "10-QT/A"}
 COLONNES_FAITS = ["concept", "rang", "debut", "fin", "val", "depot", "form", "accn"]
+# Sociétés passées sous une nouvelle holding (ou redomiciliées), avec un nouveau numéro CIK : leur historique
+# comptable reste sous l'ancien numéro, dont elles prolongent les comptes. {nouveau CIK : ancien CIK}
+PREDECESSEURS: Dict[int, int] = {
+    2115436: 34088,      # ExxonMobil Holdings Corporation <- Exxon Mobil Corporation (juillet 2026)
+    2012383: 1364742,    # BlackRock, Inc. (holding créée en 2024) <- BlackRock Finance, Inc. (ex-BlackRock, Inc.)
+    1652044: 1288776,    # Alphabet (2015) <- Google
+    1744489: 1001039,    # Walt Disney (2019) <- TWDC Enterprises 18 (ex-Walt Disney)
+    1613103: 64670,      # Medtronic plc (2015) <- Medtronic, Inc.
+    1730168: 1649338,    # Broadcom Inc. (2018) <- Broadcom Limited
+    1649338: 1441634,    # Broadcom Limited (2016) <- Avago Technologies
+    1707925: 884905,     # Linde plc (2018) <- Praxair
+    1551182: 31277,      # Eaton Corporation plc (2012) <- Eaton Corporation
+}
+# Empreinte des règles d'extraction : les faits mis en cache avec d'autres étiquettes sont relus à la SEC
+EMPREINTE_EXTRACTION = hashlib.sha256(json.dumps(
+    {"tags": TAGS, "formulaires": sorted(FORMULAIRES), "colonnes": COLONNES_FAITS}, sort_keys=True
+).encode()).hexdigest()[:10]
 
 
 def extraire_faits(js: dict) -> pd.DataFrame:
@@ -840,20 +877,25 @@ class ClientSEC:
         return self._carte
 
     def faits(self, cik: int) -> pd.DataFrame:
-        chemin = self.cfg.chemin("cache", "sec", f"faits_{int(cik):010d}.pkl")
+        chemin = self.cfg.chemin("cache", "sec", f"faits_{int(cik):010d}_{EMPREINTE_EXTRACTION}.pkl")
         if _frais(chemin, self.cfg.cache_sec_jours):
             return pd.read_pickle(chemin)
+        anciens = sorted(glob.glob(self.cfg.chemin("cache", "sec", f"faits_{int(cik):010d}*.pkl")),
+                         key=os.path.getmtime)
         try:
             js = self._json(f"{self.BASE}/api/xbrl/companyfacts/CIK{int(cik):010d}.json")
             df = extraire_faits(js)
         except RuntimeError as e:
             if "HTTP 404" not in str(e):
-                if os.path.exists(chemin):
+                if anciens:
                     info(f"  SEC indisponible pour le CIK {cik} : ancienne copie utilisée.")
-                    return pd.read_pickle(chemin)
+                    return pd.read_pickle(anciens[-1])
                 raise
             df = pd.DataFrame(columns=COLONNES_FAITS)
         df.to_pickle(chemin)
+        for f in anciens:          # copies faites avec d'anciennes règles d'extraction
+            if os.path.abspath(f) != os.path.abspath(chemin):
+                os.remove(f)
         return df
 
     def sic(self, cik: int) -> Optional[int]:
@@ -904,25 +946,36 @@ def _proches(index: dict, jour: int, tol: int) -> list:
     return res
 
 
-def _ttm(index: dict, jE: int, lim: int, revenus: bool = False, tol: int = 5) -> float:
+def _ttm(index: dict, jE: int, lim: int, revenus: bool = False, tol: int = 5, _niveau: int = 0) -> float:
+    """Cumul sur 12 mois glissants de la période close vers jE, tel que connu à la date lim :
+    exercice précédent + cumul de l'exercice en cours - même cumul un an plus tôt.
+
+    La fin de période la plus proche et le cumul le plus long sont essayés d'abord ; s'ils ne permettent
+    pas le calcul (trimestres « calendaires » ajoutés au rapport annuel, par exemple), les suivants
+    prennent le relais. Si l'exercice précédent manque (date de clôture changée, période de
+    transition), il est remplacé par le cumul sur 12 mois à sa date, calculé de la même façon."""
     # éléments : (jour_début, jour_fin, durée, valeur, jour_dépôt, rang_étiquette)
     cands = [p for p in _proches(index, jE, tol) if p[4] <= lim and 80 <= p[2] <= 380]
     if not cands:
         return np.nan
     pref = (lambda q: -q[3]) if revenus else (lambda q: q[5])
-    p = min(cands, key=lambda q: (abs(q[1] - jE), -q[2], pref(q)))
-    p = min([q for q in cands if q[1] == p[1]], key=lambda q: (-q[2], pref(q)))   # cumul le plus long
-    if p[2] >= 350:
-        return p[3]
-    jd, fin, dur, val = p[0], p[1], p[2], p[3]
-    fy = [q for q in _proches(index, jd - 1, 12) if 350 <= q[2] <= 380 and q[4] <= lim]
-    cible = fin - 364
-    ytd = [q for q in _proches(index, cible, 21) if abs(q[2] - dur) <= 20 and q[4] <= lim]
-    if not fy or not ytd:
-        return np.nan
-    a = min(fy, key=lambda q: (abs(q[1] - (jd - 1)), pref(q)))
-    b = min(ytd, key=lambda q: (abs(q[1] - cible), abs(q[2] - dur), pref(q)))
-    return a[3] + val - b[3]
+    for p in sorted(cands, key=lambda q: (abs(q[1] - jE), q[1], -q[2], pref(q))):
+        if p[2] >= 350:
+            return p[3]
+        jd, fin, dur, val = p[0], p[1], p[2], p[3]
+        fy = [q for q in _proches(index, jd - 1, 12) if 350 <= q[2] <= 380 and q[4] <= lim]
+        if fy:
+            a = min(fy, key=lambda q: (abs(q[1] - (jd - 1)), pref(q)))[3]
+        elif _niveau == 0:
+            a = _ttm(index, jd - 1, lim, revenus, 12, 1)
+        else:
+            continue
+        cible = fin - 364
+        ytd = [q for q in _proches(index, cible, 21) if abs(q[2] - dur) <= 20 and q[4] <= lim]
+        if ytd and np.isfinite(a):
+            b = min(ytd, key=lambda q: (abs(q[1] - cible), abs(q[2] - dur), pref(q)))
+            return a + val - b[3]
+    return np.nan
 
 
 def _annuel_recent(index: dict, jE: int, lim: int, recul: int = 370) -> float:
@@ -964,7 +1017,7 @@ def _trimestre(index: dict, jE: int, lim: int, tol: int = 5) -> float:
     if not longs:
         return np.nan
     p = min(longs, key=lambda q: (-q[2], q[5]))
-    prec = [x for x in _proches(index, fin - 91, 20)
+    prec = [x for x in _proches(index, fin - 91, 30)       # jusqu'à 121 jours : 4e trimestre de 16 semaines
             if x[4] <= lim and abs(x[0] - p[0]) <= 5 and 60 <= p[2] - x[2] <= 120]
     if not prec:
         return np.nan
@@ -1035,6 +1088,9 @@ def table_fondamentale(faits: pd.DataFrame) -> pd.DataFrame:
     if per.empty:
         return pd.DataFrame()
 
+    pos = f["concept"].isin(CONCEPTS_POSITIFS)
+    f.loc[pos, "val"] = f.loc[pos, "val"].abs()
+
     # Première publication de chaque valeur, puis index de recherche par date de fin
     f = f.sort_values("jp", kind="mergesort")
     prem = f.drop_duplicates(subset=["concept", "rang", "jd", "jf"], keep="first")
@@ -1089,38 +1145,51 @@ def table_fondamentale(faits: pd.DataFrame) -> pd.DataFrame:
         lim = jp_i + 30
         r = {"jf": jf_i, "jp": jp_i, "annuel": bool(ligne["annuel"])}
         r.update(valeurs(jf_i, lim, 5, 7))
-        r.update({f"{c}__l1": x for c, x in valeurs(jf_i - 365, lim, 12, 12).items()})
-        r["actif__l2"] = _instant(stock["actif"], jf_i - 730, lim, 16)
+        # un an et deux ans plus tôt : jusqu'à 35 jours d'écart, pour suivre un changement de date de clôture
+        # (les fins de trimestre sont espacées d'environ 91 jours, aucune confusion possible)
+        r.update({f"{c}__l1": x for c, x in valeurs(jf_i - 365, lim, 35, 35).items()})
+        a2 = _instant(stock["actif"], jf_i - 730, lim, 35)
+        r["actif__l2"] = a2 if np.isfinite(a2) else _instant(stock["passif_et_cp"], jf_i - 730, lim, 35)
         lignes.append(r)
     t = pd.DataFrame(lignes).sort_values("jf").reset_index(drop=True)
     n = len(t)
     v = {c: t[c].astype(float).values for c in t.columns if c not in ("annuel",)}
 
     def composer(g) -> Dict[str, np.ndarray]:
-        rev = g("revenus")
+        rev = _premier_fini(g("revenus"), g("resultat_exploitation") + g("couts_totaux"))
         cp = g("capitaux_propres")
         # Charges d'intérêts : déclarées, sinon charge nette d'intérêts, sinon intérêts payés (12 mois
-        # glissants), sinon les mêmes sur le dernier exercice publié s'il a moins d'un an
+        # glissants), sinon les mêmes sur le dernier exercice publié s'il a moins d'un an ; à défaut, des
+        # produits d'intérêts nets signifient qu'il n'y a pas de charge nette (0)
         def charge_nette(x):
-            return np.where(np.isfinite(x), np.where(x < 0, -x, 0.0), np.nan)
+            return np.where(np.isfinite(x) & (x < 0), -x, np.nan)
+
+        def produit_net(x):
+            return np.where(np.isfinite(x) & (x >= 0), 0.0, np.nan)
         interet = _premier_fini(g("charges_interets"), charge_nette(g("interets_nets")), g("interets_payes"),
                                 g("charges_interets_an"), charge_nette(g("interets_nets_an")),
-                                g("interets_payes_an"))
+                                g("interets_payes_an"), produit_net(g("interets_nets")),
+                                produit_net(g("interets_nets_an")))
         # EBIT : résultat d'exploitation, sinon avant impôt + intérêts, sinon résultat net + impôt + intérêts
+        # (sans ligne d'impôt, comme les foncières qui n'en paient pas : impôt nul)
         ebit = np.where(np.isfinite(g("resultat_exploitation")), g("resultat_exploitation"),
                         np.where(np.isfinite(g("resultat_avant_impot")),
                                  g("resultat_avant_impot") + np.nan_to_num(interet),
-                                 g("resultat_net") + g("impot") + np.nan_to_num(interet)))
+                                 g("resultat_net") + np.nan_to_num(g("impot")) + np.nan_to_num(interet)))
         # Dette = part à plus d'un an + court terme (total déclaré, sinon échéances + emprunts),
         # sinon les agrégats. Rien au bilan : nulle, sauf indice contraire (intérêts, emprunts émis ou remboursés).
         nc, ech, ct_tot, ct = g("dette_lt_nc"), g("dette_lt_courante"), g("dette_courante"), g("emprunts_ct")
         court = np.where(np.isfinite(ct_tot), ct_tot, np.nan_to_num(ech) + np.nan_to_num(ct))
         lt_tot, tot = g("dette_lt_totale"), g("dette_totale")
+        compo = [g(c) for c in COMPOSANTES_DETTE]
+        somme_compo = np.where(np.any([np.isfinite(x) for x in compo], axis=0),
+                               np.nansum([np.nan_to_num(x) for x in compo], axis=0), np.nan)
         dette = np.where(np.isfinite(nc), nc + court,
                          np.where(np.isfinite(lt_tot), lt_tot + np.nan_to_num(ct),
                                   np.where(np.isfinite(tot), tot,
-                                           np.where(np.isfinite(ct_tot) | np.isfinite(ech) | np.isfinite(ct),
-                                                    court, np.nan))))
+                                           np.where(np.isfinite(somme_compo), somme_compo + np.nan_to_num(ct),
+                                                    np.where(np.isfinite(ct_tot) | np.isfinite(ech)
+                                                             | np.isfinite(ct), court, np.nan)))))
         # (des intérêts minimes, par exemple sur des contrats de location, ne prouvent pas une dette notable)
         seuil = np.where(np.isfinite(rev) & (rev > 0), 0.002 * rev, 0.001 * np.nan_to_num(g("actif")))
         preuve = (np.nan_to_num(interet) > seuil) | (np.nan_to_num(g("flux_dette")) > 0)
@@ -1130,7 +1199,7 @@ def table_fondamentale(faits: pd.DataFrame) -> pd.DataFrame:
             "gp": np.where(np.isfinite(g("marge_brute")), g("marge_brute"), rev - g("cout_revenus")),
             "ebit": ebit,
             "ni": g("resultat_net"), "cfo": g("cfo"), "capex": g("capex"), "da": g("amortissements"),
-            "interet": interet, "sga": g("sga"), "actif": g("actif"),
+            "interet": interet, "sga": g("sga"), "actif": _premier_fini(g("actif"), g("passif_et_cp")),
             "ac": g("actif_courant"), "pc": g("passif_courant"), "cp": cp,
             "passif": np.where(np.isfinite(g("passif")), g("passif"), g("passif_et_cp") - cp),
             "treso": g("tresorerie") + np.nan_to_num(g("placements_ct")),
@@ -1246,9 +1315,31 @@ COLONNES_FOND = [c for c in [
     "cfo_actif", "stabilite", "fcf_3a", "levier_fin", "surprise_rn", "marge_brute_pct"]]
 
 
+def sans_lignes_degradees(t: pd.DataFrame, recul_jours: int = 400) -> pd.DataFrame:
+    """Retire les lignes incomplètes (F-score sur moins de 6 critères ou actif inconnu) publiées après une
+    ligne complète portant sur une période close moins de 400 jours plus tôt : cette dernière reste en
+    vigueur. Cas d'une scission récente (comparatifs trimestriels absents), d'un changement de date de
+    clôture ou d'une étiquette abandonnée d'un rapport à l'autre."""
+    if t is None or t.empty or "fscore_n" not in t:
+        return t
+    complet = ((t["fscore_n"] >= 6) & t["actif"].notna()).values
+    if complet.all() or not complet.any():
+        return t
+    garder = np.ones(len(t), dtype=bool)
+    fins = pd.to_datetime(t["fin"]).values
+    dernier = None
+    for k in np.argsort(pd.to_datetime(t["dispo"]).values, kind="stable"):
+        if complet[k]:
+            dernier = fins[k] if dernier is None else max(dernier, fins[k])
+        elif dernier is not None and (fins[k] - dernier) / np.timedelta64(1, "D") <= recul_jours:
+            garder[k] = False
+    return t[garder]
+
+
 def panneau_fondamental(tables: Dict[int, pd.DataFrame]) -> pd.DataFrame:
     morceaux = []
     for cik, t in tables.items():
+        t = sans_lignes_degradees(t)
         if t is None or t.empty:
             continue
         x = t.copy()
@@ -1454,7 +1545,7 @@ def appliquer_filtres(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
 
     if cfg.mode == "complet":
         fn = df["fscore_n"].astype(float)
-        fs9 = (df["fscore"].astype(float) * 9 / fn).where(fn >= 6)
+        fs9 = (df["fscore"].astype(float) * 9 / fn).where(fn >= criteres_fscore_requis(sect))
         df["fscore_9"] = fs9
         donnees_ok = donnees_ok & fs9.notna().values & df["actif"].astype(float).notna().values
         marquer(fs9 < cfg.fscore_min, lambda k: f"F-score {_fr(fs9.iloc[k])}/9 < {cfg.fscore_min:g}",
@@ -1561,6 +1652,14 @@ def calculer_scores(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
 SIGNAUX = ["ACHETER", "GARDER", "SURVEILLER", "VENDRE", "DONNÉES INSUFFISANTES"]
 
 
+def criteres_fscore_requis(secteur):
+    """Critères du F-score à mesurer au minimum : les deux tiers des critères applicables, soit 6 sur 9,
+    et 5 sur 7 pour les financières (ni ratio de liquidité ni marge brute dans leurs comptes)."""
+    if isinstance(secteur, (pd.Series, np.ndarray, list)):
+        return np.where(np.asarray(secteur) == "Financials", 5, 6)
+    return 5 if secteur == "Financials" else 6
+
+
 def _raison_insuffisance(r: pd.Series, cfg: Config) -> str:
     """Pourquoi une action n'a pas de signal : le premier manque rencontré."""
     if not bool(r.get("historique_ok", False)):
@@ -1571,10 +1670,11 @@ def _raison_insuffisance(r: pd.Series, cfg: Config) -> str:
             return "Aucun compte récent exploitable à la SEC (société récente, ou dernier rapport trop ancien)"
         n = pd.to_numeric(r.get("fscore_n"), errors="coerce")
         n = int(n) if np.isfinite(n) else 0
-        if n < 6:
+        requis = criteres_fscore_requis(r.get("secteur"))
+        if n < requis:
             if n == 0:
                 return "F-score non mesurable : comptes XBRL incomplets"
-            return (f"F-score mesurable sur {n} critère{'s' if n > 1 else ''} seulement (6 requis) : "
+            return (f"F-score mesurable sur {n} critère{'s' if n > 1 else ''} seulement ({requis} requis) : "
                     "comptes XBRL incomplets")
         if not np.isfinite(pd.to_numeric(r.get("actif"), errors="coerce")):
             return "Total de l'actif introuvable dans les comptes XBRL"
@@ -1734,6 +1834,28 @@ def infos_tickers(tickers: Sequence[str], actuel: pd.DataFrame, sec: Optional[Cl
     return out
 
 
+def fusionner_predecesseur(nouveau: pd.DataFrame, ancien: pd.DataFrame) -> pd.DataFrame:
+    """Faits de la nouvelle société précédés de ceux de l'ancienne, publiés avant son premier dépôt."""
+    if ancien is None or not len(ancien):
+        return nouveau
+    if nouveau is None or not len(nouveau):
+        return ancien
+    premier = pd.to_datetime(nouveau["depot"]).min()
+    return pd.concat([ancien[pd.to_datetime(ancien["depot"]) < premier], nouveau], ignore_index=True)
+
+
+def faits_societe(sec, cik: int, _profondeur: int = 0) -> pd.DataFrame:
+    """Faits XBRL d'une société, avec l'historique des sociétés qu'elle prolonge s'il y a lieu."""
+    faits = sec.faits(cik)
+    ancien = PREDECESSEURS.get(int(cik))
+    if ancien and _profondeur < 3:
+        try:
+            faits = fusionner_predecesseur(faits, faits_societe(sec, ancien, _profondeur + 1))
+        except Exception as e:  # noqa: BLE001
+            info(f"  Historique de l'ancienne société (CIK {ancien}) indisponible ({type(e).__name__}).")
+    return faits
+
+
 def charger_comptes(ciks: Sequence[int], sec: ClientSEC) -> Dict[int, pd.DataFrame]:
     ciks = sorted({int(c) for c in ciks if np.isfinite(c)})
     info(f"Comptes SEC : {len(ciks)} sociétés (environ {max(1, len(ciks) // 150)} min la première fois, "
@@ -1743,7 +1865,7 @@ def charger_comptes(ciks: Sequence[int], sec: ClientSEC) -> Dict[int, pd.DataFra
     erreurs = 0
     for k, cik in enumerate(ciks):
         try:
-            tables[cik] = table_fondamentale(sec.faits(cik))
+            tables[cik] = table_fondamentale(faits_societe(sec, cik))
         except Exception as e:  # noqa: BLE001
             erreurs += 1
             info(f"  CIK {cik} ignoré ({type(e).__name__}: {str(e)[:80]})")

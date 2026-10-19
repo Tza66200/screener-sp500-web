@@ -1,7 +1,8 @@
-"""Moteur point-in-time sur de VRAIS fichiers companyfacts de la SEC (10 sociétés du S&P 500).
+"""Moteur point-in-time sur de VRAIS fichiers companyfacts de la SEC (20 sociétés du S&P 500).
 
 Chiffres de référence : rapports annuels 10-K publiés (chiffre d'affaires et résultat net).
 Contrôles indépendants : 12 mois glissants = somme des 4 trimestres reconstitués à partir des faits bruts.
+Cas particuliers : changement de date de clôture, scission récente, nouvelle holding, total d'actif absent.
 """
 import gzip
 import json
@@ -106,6 +107,11 @@ verifier("Incyte : intérêts minimes (locations) -> dette nulle, trésorerie ne
          and incy.iloc[-1]["dette_ebitda"] < 0)
 _, ko = tables[21344]
 verifier("Coca-Cola : dette totale 40-50 Md$", 40e9 < ko.iloc[-1]["dette"] < 50e9, f"{ko.iloc[-1]['dette'] / 1e9:.1f}")
+_, apa = tables[1841666]
+x = apa[apa["fin"] == "2025-12-31"].iloc[0]
+verifier("APA : CA reconstitué (résultat d'exploitation + charges), investissements pétroliers reconnus",
+         abs(x["revenus"] - 9.516e9) < 1e6 and abs(x["capex"] - 2.740e9) < 1e6 and np.isfinite(apa.iloc[-1]["fcf"])
+         and apa.iloc[-1]["fscore_n"] >= 8, f"CA {x['revenus'] / 1e9:.2f} Md$, capex {x['capex'] / 1e9:.2f} Md$")
 _, lly = tables[59478]
 x = lly.iloc[-1]
 verifier("Eli Lilly : intérêts publiés au seul rapport annuel -> couverture sur le dernier exercice (2025)",
@@ -114,11 +120,8 @@ verifier("Eli Lilly : intérêts publiés au seul rapport annuel -> couverture s
 verifier("Apple : intérêts plus publiés depuis 2023 -> couverture inconnue (pas de valeur périmée)",
          np.isnan(aapl.iloc[-1]["couverture"]))
 
-print("\n4. Indicateurs plausibles pour les 10 sociétés")
-for f in sorted(os.listdir(D)):
-    if not f.endswith(".json.gz") or "submissions" in f:
-        continue
-    cik = int(f.split(".")[0])
+print("\n4. Indicateurs plausibles pour les 10 sociétés à long historique")
+for cik in (320193, 21344, 59478, 40533, 721371, 1534701, 1841666, 879169, 906163, 936340):
     js, t = tables.get(cik) or charger(cik)
     x = t.iloc[-1]
     nom = js["entityName"]
@@ -127,6 +130,50 @@ for f in sorted(os.listdir(D)):
           and (pd.Timestamp("2026-10-18") - x["dispo"]).days < 200)
     verifier(f"{nom} : table exploitable, F-score calculable, comptes récents", ok,
              f"{len(t)} trimestres, F-score {fs9:.1f}/9 sur {int(x['fscore_n'])} signaux, dernier dépôt {x['dispo'].date()}")
+
+print("\n5. Cas particuliers des comptes récents")
+_, ferg = charger(2011641)        # Ferguson : clôture déplacée du 31 juillet au 31 décembre (période de transition)
+x = ferg.iloc[-1]
+verifier("Ferguson : 12 mois glissants à travers le changement de date de clôture",
+         x["fin"] == pd.Timestamp("2026-06-30") and abs(x["revenus"] - (16223e6 + 31316e6 - 15576e6)) < 1e6
+         and x["fscore_n"] >= 6, f"CA {x['revenus'] / 1e9:.3f} Md$, F-score sur {int(x['fscore_n'])} critères")
+_, wat = charger(1000697)         # Waters : trimestres calendaires ajoutés au rapport annuel
+x = wat.iloc[-1]
+verifier("Waters : F-score complet malgré les trimestres « calendaires » du rapport annuel",
+         x["fscore_n"] >= 7 and abs(x["revenus"] - 4644e6) < 1e6, f"{int(x['fscore_n'])} critères")
+_, lennar = charger(920760)       # Lennar : total de l'actif absent du dernier 10-Q
+x = lennar.iloc[-1]
+verifier("Lennar : total de l'actif = total du passif et des capitaux propres",
+         x["fin"] == pd.Timestamp("2026-08-31") and abs(x["actif"] - 33378.2e6) < 1e5, f"{x['actif'] / 1e9:.2f} Md$")
+_, qnity = charger(2058873)       # Qnity : scission de DuPont (novembre 2025), comparatifs trimestriels absents
+_, blk = charger(2012383)         # BlackRock : nouvelle holding depuis octobre 2024
+pan = sc.panneau_fondamental({2058873: qnity, 2012383: blk})
+x = sc.fondamentaux_aux_dates(pan, ["2026-10-16"], [2058873, 2012383]).set_index("cik")
+verifier("scission récente : le dernier rapport complet (annuel 2025) reste en vigueur",
+         qnity.iloc[-1]["fscore_n"] < 6 and x.at[2058873, "fin"] == pd.Timestamp("2025-12-31")
+         and x.at[2058873, "fscore_n"] >= 6, f"{qnity.iloc[-1]['fscore_n']:.0f} critères au dernier trimestre")
+verifier("nouvelle holding : rapport complet retenu", x.at[2012383, "fscore_n"] >= 6, f"{x.at[2012383, 'fin'].date()}")
+_, xom = charger(2115436)         # ExxonMobil Holdings : un seul 10-Q sous le nouveau numéro CIK
+verifier("ExxonMobil Holdings seule : historique insuffisant (d'où la fusion avec l'ancienne société)",
+         len(xom) == 1 and xom.iloc[-1]["fscore_n"] < 6 and sc.PREDECESSEURS.get(2115436) == 34088)
+
+_, dis = charger(1744489)         # Disney : charge d'intérêts de l'exercice 2025 publiée avec un signe négatif
+x = dis.iloc[-1]
+verifier("Disney : signe inversé d'une charge d'intérêts corrigé (couverture calculée)",
+         1.5e9 < x["charges_interets"] < 2.2e9 and 5 < x["couverture"] < 20, f"{x['couverture']:.1f}x")
+_, exr = charger(1289490)         # Extra Space Storage : foncière, sans impôt ni total de la dette
+x = exr.iloc[-1]
+verifier("Extra Space Storage : EBIT sans ligne d'impôt, dette = somme des lignes du bilan",
+         x["ebit"] > 1e9 and 12e9 < x["dette"] < 15e9 and 1.5 < x["couverture"] < 4,
+         f"EBIT {x['ebit'] / 1e9:.2f} Md$, dette {x['dette'] / 1e9:.1f} Md$, couverture {x['couverture']:.1f}x")
+_, nke = charger(320187)          # Nike : produits d'intérêts nets, intérêts versés publiés à l'exercice
+x = nke.iloc[-1]
+verifier("Nike : intérêts versés retenus malgré des produits d'intérêts nets",
+         abs(x["charges_interets"] - 323e6) < 1e6 and 5 < x["couverture"] < 30, f"{x['couverture']:.1f}x")
+_, cost = charger(909832)         # Costco : 4e trimestre de 16 semaines
+x = cost[cost["annuel"]].iloc[-1]
+verifier("Costco : surprise de résultats du 4e trimestre de 16 semaines", np.isfinite(x["surprise_rn"]),
+         f"exercice clos le {x['fin'].date()}")
 
 print(f"\nRésultat : {len(OK)} tests réussis, {len(KO)} échecs")
 if KO:

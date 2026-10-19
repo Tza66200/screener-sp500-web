@@ -176,6 +176,28 @@ tb2 = sc.charger_taux_sans_risque(sc.Config(dossier=os.path.join(SORTIE, "fred_k
 verifier("FRED injoignable : None (le backtest prend ^IRX)", tb2 is None)
 sc.http_get = vieux_get
 
+print("\n6. Cache des comptes SEC : relu quand les règles d'extraction changent")
+import gzip  # noqa: E402
+import json  # noqa: E402
+
+with gzip.open(os.path.join(ICI, "donnees_sec", "21344.json.gz"), "rt", encoding="utf-8") as fh:
+    js_ko = json.load(fh)
+cfg_sec = sc.Config(dossier=os.path.join(SORTIE, "sec"), email="test@domaine-test.org")
+dossier_sec = os.path.dirname(cfg_sec.chemin("cache", "sec", "x"))
+ancien = os.path.join(dossier_sec, "faits_0000021344.pkl")             # copie d'une version précédente
+pd.DataFrame(columns=sc.COLONNES_FAITS).to_pickle(ancien)
+client = sc.ClientSEC(cfg_sec)
+lus = []
+client._json = lambda url: lus.append(url) or js_ko
+f1 = client.faits(21344)
+f2 = client.faits(21344)
+verifier("règles d'extraction changées : comptes relus une seule fois, ancienne copie supprimée",
+         len(lus) == 1 and len(f1) > 1000 and len(f2) == len(f1) and not os.path.exists(ancien)
+         and os.listdir(dossier_sec) == [f"faits_0000021344_{sc.EMPREINTE_EXTRACTION}.pkl"], str(os.listdir(dossier_sec)))
+cfg_sec.cache_sec_jours = 0                                            # copie périmée et SEC en panne
+client._json = lambda url: (_ for _ in ()).throw(RuntimeError("HTTP 503"))
+verifier("SEC en panne : dernière copie utilisée", len(client.faits(21344)) == len(f1))
+
 print(f"\nRésultat : {len(OK)} tests réussis, {len(KO)} échecs")
 if KO:
     print("Échecs :", KO)

@@ -282,7 +282,8 @@ cl = pd.DataFrame({"signal": ["DONNÉES INSUFFISANTES", "VENDRE", "GARDER", "ACH
                    "secteur": ["Energy", "Industrials", "Financials", "Industrials", "Utilities"],
                    "nom": ["A", "B", "C", "D", "E"], "cik": [1.0, 2.0, 3.0, nan, 5.0],
                    "capitalisation": [1e9, 2e9, 3e9, 4e9, 5e9], "dette": [1e8, nan, nan, 1e8, 2e8],
-                   "couverture": [5.0, 5.0, nan, nan, 4.0], "surprise": [0.1, 0.1, nan, 0.1, 0.1]},
+                   "couverture": [5.0, 5.0, nan, nan, 4.0], "surprise": [0.1, 0.1, nan, 0.1, 0.1],
+                   "rend_fcf": [0.05, 0.05, nan, 0.05, 0.05]},
                   index=pd.Index(["AAA", "BBB", "CCC", "DDD", "EEE"], name="ticker"))
 diag = os.path.join(TMP, "diagnostic")
 sw.diagnostic_sec(cfg_demo, cl, diag)

@@ -1314,7 +1314,8 @@
         el("li", null, el("strong", null, "Potentiel. "), "Momentum sur 12 mois hors dernier mois, dynamique des résultats (bénéfice trimestriel comparé à l'an passé, révisions des analystes sur 90 jours) et valorisation (rendement du free cash-flow, EBIT rapporté à la valeur d'entreprise, rendement des bénéfices)."),
         el("li", null, el("strong", null, "Robustesse. "), "Qualité (rentabilité brute, ROA, flux de trésorerie, stabilité, endettement) et faible risque (volatilité, bêta, perte maximale sur un an)."),
         el("li", null, el("strong", null, "Comparaison au secteur. "), "Chaque indicateur devient un rang parmi les actions du même secteur ; le score final est un rang de 0 à 100 sur tout l'indice."),
-        el("li", null, el("strong", null, "Comptes datés au jour de leur publication. "), "Les chiffres viennent des dépôts officiels à la SEC, tels que publiés la première fois : le backtest n'utilise jamais une information qui n'était pas encore connue.")),
+        el("li", null, el("strong", null, "Comptes datés au jour de leur publication. "), "Les chiffres viennent des dépôts officiels à la SEC, tels que publiés la première fois : le backtest n'utilise jamais une information qui n'était pas encore connue."),
+        el("li", null, el("strong", null, "Comptes incomplets. "), "Le F-score est ramené sur 9 quand un critère n'est pas mesurable, à condition d'en mesurer au moins 6 (5 pour les financières, sans ratio de liquidité ni marge brute). Si le dernier rapport est incomplet (scission récente, changement de date de clôture), le précédent rapport complet reste en vigueur pendant 400 jours au plus ; une société passée sous une nouvelle holding garde l'historique de l'ancienne.")),
       ));
     const signaux = el("section", { class: "bloc" }, el("h2", null, "Les signaux"),
       tableSimple(["Signal", "Règle", "Ce que tu en fais"], [
@@ -1322,7 +1323,7 @@
         [pastille("GARDER"), "Score d'au moins " + reg.seuil_garder, "La conserver si tu l'as ; pas prioritaire à l'achat"],
         [pastille("SURVEILLER"), "Score de " + reg.seuil_vente + " à " + reg.seuil_garder, "La conserver, en la surveillant"],
         [pastille("VENDRE"), "Score sous " + reg.seuil_vente + ", ou un filtre de sécurité échoué", "Vendre ou éviter (le motif est indiqué)"],
-        [pastille("DONNÉES INSUFFISANTES"), "Historique de cours ou comptes manquants", "Pas d'avis"],
+        [pastille("DONNÉES INSUFFISANTES"), "Moins de 200 séances de cours, ou comptes trop incomplets pour le F-score (le motif précise la cause)", "Pas d'avis"],
       ], 3),
       el("p", { class: "petit second" }, "La zone GARDER et SURVEILLER sert de tampon : on n'achète que le haut du classement mais on ne vend qu'en cas de vraie dégradation, ce qui limite les allers-retours, donc les frais et l'impôt sur les plus-values."));
     const lignesReg = Object.entries(LIBELLES).filter(([k]) => k in reg).map(([k, [lib, f]]) => [el("dt", null, lib), el("dd", null, f(reg[k]))]);
