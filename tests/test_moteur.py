@@ -135,6 +135,17 @@ verifier("banques : couverture et FCF ignorés", not f.loc["X6":"X9", "echec_fil
          and "Volatilité" in f.at["X10", "motif"] and "Couverture" not in f.at["X10", "motif"])
 verifier("10 % les plus volatils exclus", bool(f.at["X11", "echec_filtre"]) and "Volatilité" in f.at["X11", "motif"])
 verifier("F-score des banques ramené sur 9", abs(f.at["X6", "fscore_9"] - 6 * 9 / 7) < 1e-9)
+dfa = df.copy()
+dfa["accruals"] = [-0.05, -0.04, -0.03, -0.02, -0.01, -0.005] + [0.0] * 6
+fa = sc.appliquer_filtres(dfa, cfg)
+dfa.loc["X5", "accruals"] = 0.06
+fb = sc.appliquer_filtres(dfa, cfg)
+verifier("accruals négatifs jamais éliminatoires, même parmi les pires du secteur",
+         fa.at["X5", "f_accruals"] == "ok" and "Accruals" not in fa.at["X5", "motif"]
+         and fa.at["X5", "s_accruals"] == 0.0, fa.at["X5", "motif"])
+verifier("accruals positifs parmi les pires du secteur exclus",
+         fb.at["X5", "f_accruals"] == "echec" and "Accruals élevés (6,0 %" in fb.at["X5", "motif"]
+         and fb.loc["X0":"X4", "f_accruals"].eq("ok").all(), fb.at["X5", "motif"])
 
 # Portefeuille : plafond sectoriel, une seule classe d'actions par société
 p = pd.DataFrame({"signal": ["ACHETER"] * 8 + ["VENDRE", "GARDER"],
@@ -336,9 +347,13 @@ verifier("cours du jour ignoré tant que la séance de New York est ouverte",
 raisons = [sc._raison_insuffisance(pd.Series(r), cfg) for r in [
     {"historique_ok": False}, {"historique_ok": True, "fin": pd.NaT},
     {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 4.0, "actif": 1e9},
-    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 8.0, "actif": float("nan")}]]
+    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 8.0, "actif": float("nan")},
+    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 1.0, "actif": 1e9},
+    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 0.0, "actif": 1e9}]]
 verifier("données insuffisantes : la raison précise est donnée", raisons[0].startswith("Moins de 200 séances")
-         and raisons[1].startswith("Aucun compte récent") and "4 critères" in raisons[2] and "actif" in raisons[3], raisons[2])
+         and raisons[1].startswith("Aucun compte récent") and "4 critères" in raisons[2] and "actif" in raisons[3]
+         and "sur 1 critère seulement" in raisons[4] and raisons[5].startswith("F-score non mesurable"),
+         " | ".join(raisons[2:]))
 
 print(f"\nRésultat : {len(OK)} tests réussis, {len(KO)} échecs")
 if KO:

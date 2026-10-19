@@ -106,6 +106,13 @@ verifier("Incyte : intérêts minimes (locations) -> dette nulle, trésorerie ne
          and incy.iloc[-1]["dette_ebitda"] < 0)
 _, ko = tables[21344]
 verifier("Coca-Cola : dette totale 40-50 Md$", 40e9 < ko.iloc[-1]["dette"] < 50e9, f"{ko.iloc[-1]['dette'] / 1e9:.1f}")
+_, lly = tables[59478]
+x = lly.iloc[-1]
+verifier("Eli Lilly : intérêts publiés au seul rapport annuel -> couverture sur le dernier exercice (2025)",
+         abs(x["charges_interets"] - 895e6) < 1e6 and 20 < x["couverture"] < 60,
+         f"intérêts {x['charges_interets'] / 1e6:.0f} M$, couverture {x['couverture']:.1f}x au {x['fin'].date()}")
+verifier("Apple : intérêts plus publiés depuis 2023 -> couverture inconnue (pas de valeur périmée)",
+         np.isnan(aapl.iloc[-1]["couverture"]))
 
 print("\n4. Indicateurs plausibles pour les 10 sociétés")
 for f in sorted(os.listdir(D)):

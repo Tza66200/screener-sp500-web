@@ -883,7 +883,7 @@
       ["ebitda", "Pas d'EBITDA négatif avec une dette nette", "", ""],
       ["levier", "Hors des " + pv(reg.exclusion_levier_secteur) + " les plus endettés du secteur", fNb(r.dette_ebitda, 1), fini(r.s_levier) ? "seuil " + fNb(r.s_levier, 1) : ""],
       ["fcf", "Free cash-flow positif sur trois ans", fArgent(fini(r.fcf_3a) ? r.fcf_3a : r.fcf), fini(r.fcf_3a) ? "cumul 3 ans" : fini(r.fcf) ? "12 derniers mois" : ""],
-      ["accruals", "Hors des " + pv(reg.exclusion_accruals_secteur) + " pires du secteur (bénéfices peu convertis en trésorerie)", fPct(r.accruals, 1), fini(r.s_accruals) ? "seuil " + fPct(r.s_accruals, 1) : ""],
+      ["accruals", "Hors des " + pv(reg.exclusion_accruals_secteur) + " pires du secteur, s'ils sont positifs (bénéfice supérieur au cash-flow d'exploitation)", fPct(r.accruals, 1), fini(r.s_accruals) ? "seuil " + fPct(r.s_accruals, 1) : ""],
       ["beneish", reg.beneish_exclut ? "M-score inférieur à −1,78 (éliminatoire)" : "M-score inférieur à −1,78 (simple alerte)", fNb(r.beneish, 2), ""],
     ];
     return el("div", { class: "filtres-liste" }, lignes.map(([cle, regle, valeur, detail]) => {
@@ -1310,7 +1310,7 @@
     const so = e.sources || {};
     const methode = el("section", { class: "bloc" }, el("h2", null, "Comment le classement est construit"),
       el("div", { class: "texte" }, el("ul", null,
-        el("li", null, el("strong", null, "Filtres de sécurité éliminatoires. "), "F-score de Piotroski d'au moins " + fNb(reg.fscore_min, 0) + "/9 ; couverture des intérêts d'au moins " + fMult(reg.couverture_min) + " ; pas parmi les " + fPct(reg.exclusion_levier_secteur, 0) + " les plus endettés de son secteur ; free cash-flow positif sur 3 ans ; accruals hors des " + fPct(reg.exclusion_accruals_secteur, 0) + " pires du secteur ; hors des " + fPct(reg.exclusion_volatilite, 0) + " d'actions les plus volatiles de l'indice."),
+        el("li", null, el("strong", null, "Filtres de sécurité éliminatoires. "), "F-score de Piotroski d'au moins " + fNb(reg.fscore_min, 0) + "/9 ; couverture des intérêts d'au moins " + fMult(reg.couverture_min) + " ; pas parmi les " + fPct(reg.exclusion_levier_secteur, 0) + " les plus endettés de son secteur ; free cash-flow positif sur 3 ans ; accruals hors des " + fPct(reg.exclusion_accruals_secteur, 0) + " pires du secteur lorsqu'ils sont positifs (bénéfice supérieur au cash-flow d'exploitation) ; hors des " + fPct(reg.exclusion_volatilite, 0) + " d'actions les plus volatiles de l'indice."),
         el("li", null, el("strong", null, "Potentiel. "), "Momentum sur 12 mois hors dernier mois, dynamique des résultats (bénéfice trimestriel comparé à l'an passé, révisions des analystes sur 90 jours) et valorisation (rendement du free cash-flow, EBIT rapporté à la valeur d'entreprise, rendement des bénéfices)."),
         el("li", null, el("strong", null, "Robustesse. "), "Qualité (rentabilité brute, ROA, flux de trésorerie, stabilité, endettement) et faible risque (volatilité, bêta, perte maximale sur un an)."),
         el("li", null, el("strong", null, "Comparaison au secteur. "), "Chaque indicateur devient un rang parmi les actions du même secteur ; le score final est un rang de 0 à 100 sur tout l'indice."),

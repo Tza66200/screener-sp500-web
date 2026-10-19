@@ -38,6 +38,7 @@ import shutil
 import sys
 import time
 import traceback
+from collections import Counter
 from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
@@ -520,6 +521,47 @@ def publier_secours(args, message: str, detail: str) -> bool:
 # Programme principal
 # ---------------------------------------------------------------------------
 
+def diagnostic_sec(cfg: sc.Config, classement: pd.DataFrame, dossier: str, maximum: int = 50) -> None:
+    """Copie brute des comptes SEC des sociétés dont une donnée clé manque, pour en trouver la cause :
+    actions sans signal, dette ou couverture des intérêts inconnues, surprise de résultats incalculable."""
+    import gzip
+    c = classement
+    sans = c["signal"] == "DONNÉES INSUFFISANTES"
+    nonfin = (c["secteur"] != "Financials") & ~sans
+    capi = pd.to_numeric(c["capitalisation"], errors="coerce").fillna(0)
+    groupes = [
+        ("sans signal", sans),
+        ("dette inconnue", nonfin & c["dette"].isna()),
+        ("couverture inconnue", nonfin & c["couverture"].isna() & (pd.to_numeric(c["dette"], errors="coerce") > 0)),
+        ("surprise inconnue", ~sans & c["surprise"].isna()),
+    ]
+    choix: Dict[str, dict] = {}
+    for raison, masque in groupes:
+        for t in capi[masque.fillna(False)].sort_values(ascending=False).index[:20]:
+            cik = c.at[t, "cik"]
+            if pd.notna(cik) and len(choix) < maximum:
+                choix.setdefault(str(t), {"cik": int(cik), "nom": str(c.at[t, "nom"]), "raisons": []})
+                choix[str(t)]["raisons"].append(raison)
+    if not choix:
+        return
+    os.makedirs(dossier, exist_ok=True)
+    client = sc.ClientSEC(cfg)
+    for t, d in choix.items():
+        cik = d["cik"]
+        for nom, url in ((f"{nom_fichier(t)}_{cik}", f"{client.BASE}/api/xbrl/companyfacts/CIK{cik:010d}.json"),
+                         (f"{nom_fichier(t)}_{cik}_depots", f"{client.BASE}/submissions/CIK{cik:010d}.json")):
+            try:
+                js = client._json(url)
+                with gzip.open(os.path.join(dossier, nom + ".json.gz"), "wt", encoding="utf-8") as fh:
+                    json.dump(js, fh)
+            except Exception as e:  # noqa: BLE001
+                info(f"Diagnostic : {nom} indisponible ({type(e).__name__}).")
+    ecrire_json(os.path.join(dossier, "liste.json"), choix)
+    n = Counter(r for d in choix.values() for r in d["raisons"])
+    info(f"Diagnostic : comptes SEC bruts de {len(choix)} sociétés copiés dans {dossier}/ "
+         f"({', '.join(f'{k} : {v}' for k, v in n.items())}).")
+
+
 def nettoyer_cache(dossier: str, jours: int = 10) -> None:
     """Les révisions d'analystes sont mises en cache jour par jour : on ne garde que les plus récentes."""
     for f in glob.glob(os.path.join(dossier, "cache", "revisions_*.pkl")):
@@ -546,6 +588,8 @@ def executer(args) -> dict:
     avertissements = controler(res, cfg, pd.Timestamp(res["date"]).date() if getattr(args, "demo", False) else None)
     for t, r in res["classement"][res["classement"]["signal"] == "DONNÉES INSUFFISANTES"].iterrows():
         info(f"  Sans signal : {t} ({texte(r.get('nom'))}) : {texte(r.get('motif'))}")
+    if getattr(args, "diagnostic", False) and not getattr(args, "demo", False) and cfg.mode == "complet":
+        diagnostic_sec(cfg, res["classement"], "diagnostic")
     sources = {k: dict(v) for k, v in sc.ETAT_SOURCES.items()}
 
     # --- Backtest (hebdomadaire, ou dès que les réglages changent) ---
@@ -667,6 +711,8 @@ def main(argv=None) -> int:
     ap.add_argument("--web", default=os.path.join(ICI, "web"), help="fichiers de l'application")
     ap.add_argument("--backtest", choices=["auto", "oui", "non"], default="auto")
     ap.add_argument("--demo", action="store_true", help="données simulées (aperçu, sans réseau)")
+    ap.add_argument("--diagnostic", action="store_true",
+                    help="copier les comptes SEC bruts des actions sans signal dans diagnostic/")
     args = ap.parse_args(argv)
     simulation = None
     if args.demo:

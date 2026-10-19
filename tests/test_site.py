@@ -258,6 +258,46 @@ else:
     verifier("pas de « -0 » affiché", extra["zero"] == "0,0 %" and extra["nb"] == "0", f"{extra['zero']!r} {extra['nb']!r}")
     verifier("graduations sans -0", "-0" not in json.dumps(extra["g"]) and 0 in extra["g"], str(extra["g"]))
 
+# ---------------------------------------------------------------------------
+print("\n6. Diagnostic : comptes SEC bruts des sociétés à données manquantes")
+
+
+class SECDiagnostic:
+    BASE = "https://sec.invalid"
+    urls = []
+
+    def __init__(self, cfg):
+        pass
+
+    def _json(self, url):
+        SECDiagnostic.urls.append(url)
+        if "CIK0000000003" in url:
+            raise RuntimeError("404 simulé")
+        return {"url": url}
+
+
+sec_demo, sc.ClientSEC = sc.ClientSEC, SECDiagnostic
+nan = float("nan")
+cl = pd.DataFrame({"signal": ["DONNÉES INSUFFISANTES", "VENDRE", "GARDER", "ACHETER", "GARDER"],
+                   "secteur": ["Energy", "Industrials", "Financials", "Industrials", "Utilities"],
+                   "nom": ["A", "B", "C", "D", "E"], "cik": [1.0, 2.0, 3.0, nan, 5.0],
+                   "capitalisation": [1e9, 2e9, 3e9, 4e9, 5e9], "dette": [1e8, nan, nan, 1e8, 2e8],
+                   "couverture": [5.0, 5.0, nan, nan, 4.0], "surprise": [0.1, 0.1, nan, 0.1, 0.1]},
+                  index=pd.Index(["AAA", "BBB", "CCC", "DDD", "EEE"], name="ticker"))
+diag = os.path.join(TMP, "diagnostic")
+sw.diagnostic_sec(cfg_demo, cl, diag)
+liste = lire(os.path.join(diag, "liste.json"))
+verifier("diagnostic : sans signal, dette inconnue (hors finance) et surprise inconnue retenus ; sans CIK ignoré",
+         {k: v["raisons"] for k, v in liste.items()} == {"AAA": ["sans signal"], "BBB": ["dette inconnue"],
+                                                         "CCC": ["surprise inconnue"]}, str(liste))
+verifier("diagnostic : comptes et dépôts enregistrés, échec d'une société sans incidence",
+         sorted(os.listdir(diag)) == ["AAA_1.json.gz", "AAA_1_depots.json.gz", "BBB_2.json.gz", "BBB_2_depots.json.gz",
+                                      "liste.json"], str(sorted(os.listdir(diag))))
+shutil.rmtree(diag)
+sw.diagnostic_sec(cfg_demo, res["classement"], diag)      # colonnes du vrai classement
+verifier("diagnostic : fonctionne sur le classement produit par le moteur", True)
+sc.ClientSEC = sec_demo
+
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\nRésultat : {len(OK)} tests réussis, {len(KO)} échecs")
 if KO:

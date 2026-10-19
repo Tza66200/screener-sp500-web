@@ -27,6 +27,10 @@ on:
         description: "Recalculer aussi le backtest"
         type: boolean
         default: false
+      diagnostic:
+        description: "Joindre au journal les comptes SEC bruts des actions sans signal"
+        type: boolean
+        default: false
 
 # Aucun droit par défaut : chaque tâche ne reçoit que ce dont elle a besoin.
 permissions: {}
@@ -82,9 +86,11 @@ jobs:
           ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
           ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
           BACKTEST: ${{ (github.event.schedule == '40 6 * * 6' || inputs.backtest) && 'oui' || 'auto' }}
+          DIAGNOSTIC: ${{ (github.event_name == 'push' || inputs.diagnostic) && '--diagnostic' || '' }}
         run: |
           set -o pipefail
-          python site_web.py --sortie _site --donnees donnees --historique historique --backtest "$BACKTEST" 2>&1 | tee journal.txt
+          # shellcheck disable=SC2086
+          python site_web.py --sortie _site --donnees donnees --historique historique --backtest "$BACKTEST" $DIAGNOSTIC 2>&1 | tee journal.txt
 
       - name: Sauvegarder les données pour le prochain passage
         if: always()
@@ -103,6 +109,7 @@ jobs:
             tests.log
             _site/data/etat.json
             _site/data/classement.json
+            diagnostic/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -148,7 +155,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add historique
           if git diff --cached --quiet; then echo "Aucun nouvel instantané."; exit 0; fi
-          git commit -q -m "Signaux du $(date -u +%F)"
+          seance=$(git diff --cached --name-only | sed -n 's#.*/\([0-9-]*\)\.csv$#\1#p' | sort | tail -1)
+          git commit -q -m "Signaux du ${seance:-$(date -u +%F)}"
           for essai in 1 2 3; do
             if git pull -q --rebase && git push -q; then exit 0; fi
             sleep $((essai * 15))

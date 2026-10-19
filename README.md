@@ -70,7 +70,7 @@ directement.
 | `fscore_min` | 6 | F-score de Piotroski minimum (sur 9) |
 | `couverture_min` | 3.0 | bénéfice d'exploitation minimum, en multiple des intérêts |
 | `exclusion_levier_secteur` | 0.10 | part des plus endettés de chaque secteur exclus |
-| `exclusion_accruals_secteur` | 0.10 | part des pires accruals de chaque secteur exclus |
+| `exclusion_accruals_secteur` | 0.10 | part des pires accruals de chaque secteur exclus, seulement s'ils sont positifs (bénéfice supérieur au cash-flow) |
 | `exclusion_volatilite` | 0.10 | part des actions les plus volatiles de l'indice exclues |
 | `beneish_exclut` | false | `true` : un M-score de Beneish suspect devient éliminatoire |
 | `debut_backtest` / `debut_validation` | 2011-01-01 / 2019-01-01 | période du backtest et début de la période de validation |
@@ -127,6 +127,7 @@ l'API officielle d'Alpaca (historique depuis 2016), et le site l'indique dans la
 | « Cours manquants… » ou « cours pas à jour » | Yahoo limite les requêtes : relance plus tard, ou ajoute la source de secours Alpaca. |
 | La page affiche « Les données ne sont pas encore disponibles » | Le premier calcul n'est pas terminé, ou Pages n'est pas réglé sur GitHub Actions (étape 5). |
 | « Les données ont plus de quatre jours » | Les actualisations se sont arrêtées : onglet Actions, réactive le workflow s'il est désactivé, puis Run workflow. |
+| Une action reste « DONNÉES INSUFFISANTES » ou un indicateur manque | Le motif affiché donne la cause. Pour l'examiner : Run workflow avec la case « Joindre au journal les comptes SEC bruts » cochée (c'est automatique après chaque modification du programme) ; la branche `journal` contient alors, dans `diagnostic/`, les comptes bruts de la SEC des sociétés concernées. |
 | Erreur après une modification de `reglages.json` | Le message dit quel réglage est en cause (virgule, guillemet, valeur hors limites). Corrige le fichier. |
 
 ## Fichiers du dépôt

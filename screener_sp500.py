@@ -68,7 +68,7 @@ import requests
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-VERSION = "1.1"
+VERSION = "1.2"
 
 
 # ===========================================================================
@@ -756,6 +756,7 @@ TAGS: Dict[str, List[str]] = {
     "immobilisations": ["PropertyPlantAndEquipmentNet",
                         "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization"],
 }
+INTERETS = ("charges_interets", "interets_nets", "interets_payes")
 FLUX = {"revenus", "cout_revenus", "marge_brute", "resultat_exploitation", "resultat_avant_impot",
         "resultat_net", "impot", "charges_interets", "interets_nets", "interets_payes", "flux_dette",
         "cfo", "capex", "amortissements", "sga"}
@@ -924,6 +925,31 @@ def _ttm(index: dict, jE: int, lim: int, revenus: bool = False, tol: int = 5) ->
     return a[3] + val - b[3]
 
 
+def _annuel_recent(index: dict, jE: int, lim: int, recul: int = 370) -> float:
+    """Dernier exercice complet clos dans l'année précédant jE et publié à la date lim.
+
+    Repli pour les montants que certaines sociétés ne publient que dans leur rapport annuel (charges
+    d'intérêts d'Eli Lilly depuis 2024, par exemple) : faute de cumul sur 12 mois glissants, on reprend
+    celui du dernier exercice, à condition qu'il ait moins d'un an."""
+    if not index:
+        return np.nan
+    for j in range(jE, jE - recul - 1, -1):
+        lst = index.get(j)
+        if lst:
+            ok = [q for q in lst if q[4] <= lim and 350 <= q[2] <= 380]
+            if ok:
+                return min(ok, key=lambda q: (q[5], q[4]))[3]
+    return np.nan
+
+
+def _premier_fini(*series: np.ndarray) -> np.ndarray:
+    """Élément par élément, la première valeur finie de la liste (NaN si aucune)."""
+    out = np.asarray(series[0], dtype=float)
+    for x in series[1:]:
+        out = np.where(np.isfinite(out), out, x)
+    return out
+
+
 def _trimestre(index: dict, jE: int, lim: int, tol: int = 5) -> float:
     """Valeur du seul trimestre clos à jE (T4 = exercice - 9 mois)."""
     cands = [p for p in _proches(index, jE, tol) if p[4] <= lim]
@@ -1047,6 +1073,8 @@ def table_fondamentale(faits: pd.DataFrame) -> pd.DataFrame:
 
     def valeurs(jx: int, lim: int, tol_flux: int, tol_bilan: int) -> dict:
         r = {c: _ttm(flux[c], jx, lim, revenus=(c == "revenus"), tol=tol_flux) for c in FLUX if c != "flux_dette"}
+        for c in INTERETS:     # parfois publiés seulement dans le rapport annuel : repli sur le dernier exercice
+            r[f"{c}_an"] = np.nan if np.isfinite(r[c]) else _annuel_recent(flux[c], jx, lim)
         r["flux_dette"] = preuve_dette(jx, lim)
         r.update({c: _instant(stock[c], jx, lim, tol_bilan) for c in STOCK})
         r["q_rn"] = _trimestre(flux["resultat_net"], jx, lim, tol_flux)
@@ -1071,10 +1099,13 @@ def table_fondamentale(faits: pd.DataFrame) -> pd.DataFrame:
     def composer(g) -> Dict[str, np.ndarray]:
         rev = g("revenus")
         cp = g("capitaux_propres")
-        # Charges d'intérêts : déclarées, sinon charge nette d'intérêts, sinon intérêts payés
-        nets = g("interets_nets")
-        interet = np.where(np.isfinite(g("charges_interets")), g("charges_interets"),
-                           np.where(np.isfinite(nets), np.where(nets < 0, -nets, 0.0), g("interets_payes")))
+        # Charges d'intérêts : déclarées, sinon charge nette d'intérêts, sinon intérêts payés (12 mois
+        # glissants), sinon les mêmes sur le dernier exercice publié s'il a moins d'un an
+        def charge_nette(x):
+            return np.where(np.isfinite(x), np.where(x < 0, -x, 0.0), np.nan)
+        interet = _premier_fini(g("charges_interets"), charge_nette(g("interets_nets")), g("interets_payes"),
+                                g("charges_interets_an"), charge_nette(g("interets_nets_an")),
+                                g("interets_payes_an"))
         # EBIT : résultat d'exploitation, sinon avant impôt + intérêts, sinon résultat net + impôt + intérêts
         ebit = np.where(np.isfinite(g("resultat_exploitation")), g("resultat_exploitation"),
                         np.where(np.isfinite(g("resultat_avant_impot")),
@@ -1456,13 +1487,18 @@ def appliquer_filtres(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
                 lambda k: "Free cash-flow négatif (cumul 3 ans ou 12 derniers mois)",
                 cle="fcf", mesure=f3.where(f3.notna(), f1), applicable=nonfin & ~exempt)
 
+        # Accruals de Sloan : part du bénéfice non convertie en trésorerie. Sont exclus les 10 % les pires
+        # du secteur, mais seulement si le bénéfice dépasse le cash-flow d'exploitation (accruals > 0) :
+        # dans les secteurs lourds en amortissements, le décile « pire » peut rester négatif, et une
+        # société dont le cash-flow couvre déjà le bénéfice n'a pas de bénéfice gonflé à craindre.
         acc = df["accruals"].astype(float)
         q_acc = acc.groupby(sect).transform(lambda x: x.quantile(1 - cfg.exclusion_accruals_secteur)
                                             if x.notna().sum() >= 5 else np.nan)
-        marquer(nonfin & (acc > q_acc),
+        seuil_acc = q_acc.clip(lower=0.0)
+        marquer(nonfin & (acc > seuil_acc),
                 lambda k: f"Accruals élevés ({_fr(acc.iloc[k] * 100)} % de l'actif, {pa} % les pires du secteur)",
                 cle="accruals", mesure=acc.where(q_acc.notna()), applicable=nonfin)
-        df["s_accruals"] = q_acc
+        df["s_accruals"] = seuil_acc
 
         ben = df["beneish"].astype(float)
         marquer(nonfin & (ben > -1.78),
@@ -1534,8 +1570,11 @@ def _raison_insuffisance(r: pd.Series, cfg: Config) -> str:
         if fin is None or pd.isna(fin):
             return "Aucun compte récent exploitable à la SEC (société récente, ou dernier rapport trop ancien)"
         n = pd.to_numeric(r.get("fscore_n"), errors="coerce")
-        if not (np.isfinite(n) and n >= 6):
-            return (f"F-score mesurable sur {int(n) if np.isfinite(n) else 0} critères seulement (6 requis) : "
+        n = int(n) if np.isfinite(n) else 0
+        if n < 6:
+            if n == 0:
+                return "F-score non mesurable : comptes XBRL incomplets"
+            return (f"F-score mesurable sur {n} critère{'s' if n > 1 else ''} seulement (6 requis) : "
                     "comptes XBRL incomplets")
         if not np.isfinite(pd.to_numeric(r.get("actif"), errors="coerce")):
             return "Total de l'actif introuvable dans les comptes XBRL"
@@ -1561,7 +1600,7 @@ def attribuer_signaux(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
             motif[k] = f"Top {100 - cfg.seuil_achat:g} % du classement, filtres de sécurité passés"
         elif sig == "DONNÉES INSUFFISANTES":
             raison = _raison_insuffisance(df.iloc[k], cfg)
-            motif[k] = raison + (f" ; {motif[k]}" if motif[k] else "")
+            motif[k] = raison + (f"; {motif[k]}" if motif[k] else "")
     df["motif"] = motif
     return df
 
@@ -2519,8 +2558,9 @@ def rapport_html(res: Optional[dict], bt: Optional[dict]) -> str:
     p.append("<h2>Méthode</h2><ul>"
              "<li><b>Filtres de sécurité</b> (éliminatoires) : F-score de Piotroski ≥ 6/9, couverture des intérêts "
              "≥ 3x (1,5x services aux collectivités et immobilier), pas parmi les 10 % les plus endettés de son "
-             "secteur, free cash-flow positif sur 3 ans, accruals hors des 10 % les pires du secteur, hors des "
-             "10 % les plus volatils de l'indice. Le M-score de Beneish est signalé en alerte.</li>"
+             "secteur, free cash-flow positif sur 3 ans, accruals hors des 10 % les pires du secteur lorsqu'ils "
+             "sont positifs (bénéfice supérieur au cash-flow d'exploitation), hors des 10 % les plus volatils de "
+             "l'indice. Le M-score de Beneish est signalé en alerte.</li>"
              "<li><b>Potentiel</b> : momentum 12 mois hors dernier mois, dynamique des résultats (variation du "
              "bénéfice trimestriel sur un an, révisions des analystes sur 90 jours), valorisation (rendement "
              "FCF, EBIT / valeur d'entreprise, rendement des bénéfices).</li>"
