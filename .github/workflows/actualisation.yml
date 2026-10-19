@@ -1,0 +1,202 @@
+name: Actualisation
+
+# Calcule le screener puis publie le site sur GitHub Pages, sans serveur ni navigateur ouvert :
+#   - chaque soir de bourse à 23 h 20 UTC (1 h 20 à Paris en été, 0 h 20 en hiver), après la clôture
+#     de New York et la mise à jour des cours ;
+#   - le samedi matin, avec le backtest complet ;
+#   - à chaque modification des réglages ou du programme ;
+#   - à la demande : onglet Actions, « Actualisation », bouton « Run workflow ».
+# GitHub envoie un e-mail au propriétaire du dépôt si une actualisation échoue ; le site garde alors
+# les données précédentes et affiche le message d'erreur.
+on:
+  schedule:
+    - cron: "20 23 * * 1-5"
+    - cron: "40 6 * * 6"
+  push:
+    branches: [main]
+    paths:
+      - reglages.json
+      - screener_sp500.py
+      - site_web.py
+      - requirements.txt
+      - "web/**"
+      - ".github/workflows/actualisation.yml"
+  workflow_dispatch:
+    inputs:
+      backtest:
+        description: "Recalculer aussi le backtest"
+        type: boolean
+        default: false
+
+# Aucun droit par défaut : chaque tâche ne reçoit que ce dont elle a besoin.
+permissions: {}
+
+concurrency:
+  group: actualisation
+  cancel-in-progress: false
+
+jobs:
+  calcul:
+    name: Calcul du classement
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    outputs:
+      succes: ${{ steps.calcul.outputs.succes }}
+      publier: ${{ steps.calcul.outputs.publier }}
+    steps:
+      - name: Récupérer le programme
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Installer Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Installer les dépendances (versions et empreintes vérifiées)
+        run: python -m pip install --require-hashes --no-deps -r requirements.txt
+
+      - name: Tests (données simulées, sans réseau)
+        run: |
+          { python tests/test_moteur.py && python tests/test_sources.py && python tests/test_sec_reel.py \
+            && python tests/test_site.py; } > tests.log 2>&1 || { tail -80 tests.log; exit 1; }
+          grep "Résultat" tests.log
+
+      - name: Restaurer les données des passages précédents
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: donnees
+          key: donnees-${{ github.run_id }}
+          restore-keys: donnees-
+
+      - name: Calculer le classement et construire le site
+        id: calcul
+        continue-on-error: true
+        env:
+          SEC_EMAIL: ${{ secrets.SEC_EMAIL }}
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+          BACKTEST: ${{ (github.event.schedule == '40 6 * * 6' || inputs.backtest) && 'oui' || 'auto' }}
+        run: |
+          set -o pipefail
+          python site_web.py --sortie _site --donnees donnees --historique historique --backtest "$BACKTEST" 2>&1 | tee journal.txt
+
+      - name: Sauvegarder les données pour le prochain passage
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: donnees
+          key: donnees-${{ github.run_id }}
+
+      - name: Transmettre le journal du calcul
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: journal
+          path: |
+            journal.txt
+            tests.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Transmettre l'historique des signaux
+        if: steps.calcul.outputs.succes == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: historique
+          path: historique
+          retention-days: 3
+
+      - name: Préparer la publication du site
+        if: steps.calcul.outputs.publier == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+
+      - name: Signaler l'échec
+        if: steps.calcul.outputs.succes != 'true'
+        run: |
+          echo "::error title=Actualisation impossible::Voir l'étape « Calculer le classement et construire le site ». Le site garde les données précédentes."
+          exit 1
+
+  historique:
+    name: Enregistrer l'historique des signaux
+    needs: calcul
+    if: needs.calcul.outputs.succes == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write          # seule tâche autorisée à écrire dans le dépôt (aucune dépendance installée ici)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: historique
+          path: historique
+
+      - name: Enregistrer dans le dépôt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add historique
+          if git diff --cached --quiet; then echo "Aucun nouvel instantané."; exit 0; fi
+          git commit -q -m "Signaux du $(date -u +%F)"
+          for essai in 1 2 3; do
+            if git pull -q --rebase && git push -q; then exit 0; fi
+            sleep $((essai * 15))
+          done
+          echo "::error::Impossible d'enregistrer l'historique (le dépôt a changé pendant l'actualisation)."
+          exit 1
+
+  journal:
+    name: Publier le journal du calcul
+    needs: calcul
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write          # écrit seulement la branche « journal », réécrite à chaque actualisation
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        continue-on-error: true
+        with:
+          name: journal
+          path: journal
+
+      - name: Publier dans la branche « journal »
+        env:
+          DEPOT: ${{ github.repository }}
+          JETON: ${{ github.token }}
+          RESULTAT: ${{ needs.calcul.result }}
+          EXECUTION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p journal && cd journal
+          printf 'Exécution : %s\nRésultat du calcul : %s\nDate : %s\n' "$EXECUTION" "$RESULTAT" "$(date -u '+%F %T UTC')" > LISEZ-MOI.txt
+          git init -q -b journal
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Journal de l'actualisation du $(date -u +%F)"
+          git push -q -f "https://x-access-token:${JETON}@github.com/${DEPOT}.git" journal
+
+  publication:
+    name: Publier le site
+    needs: calcul
+    if: always() && needs.calcul.outputs.publier == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - id: deploiement
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

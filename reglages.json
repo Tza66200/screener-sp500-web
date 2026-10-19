@@ -1,0 +1,41 @@
+{
+  "_lisez_moi": "Modifie une valeur, puis « Commit changes » : le site se recalcule tout seul (backtest compris) en 20 à 40 minutes. Garde les guillemets et les virgules. Explications : README.md, section Réglages. Règle d'or : choisis tes réglages AVANT de regarder le backtest.",
+
+  "portefeuille": {
+    "n_positions": 25,
+    "max_par_secteur": 0.25
+  },
+
+  "signaux": {
+    "seuil_achat": 90,
+    "seuil_garder": 60,
+    "seuil_vente": 50,
+    "robustesse_min_achat": 50,
+    "poids_potentiel": 0.5
+  },
+
+  "filtres": {
+    "fscore_min": 6,
+    "couverture_min": 3.0,
+    "couverture_min_secteurs": { "Utilities": 1.5, "Real Estate": 1.5 },
+    "exclusion_levier_secteur": 0.10,
+    "exclusion_accruals_secteur": 0.10,
+    "exclusion_volatilite": 0.10,
+    "secteurs_sans_filtre_fcf": ["Utilities"],
+    "beneish_exclut": false
+  },
+
+  "backtest": {
+    "debut_backtest": "2011-01-01",
+    "debut_validation": "2019-01-01",
+    "frais": 0.001,
+    "rebalancement": "trimestriel",
+    "ventes_urgence": true,
+    "backtest_prix_depuis_2001": false
+  },
+
+  "donnees": {
+    "mode": "complet",
+    "revisions_analystes": true
+  }
+}

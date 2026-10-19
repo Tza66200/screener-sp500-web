@@ -1,0 +1,7 @@
+# Produits par l'actualisation (jamais enregistrés dans le dépôt)
+_site/
+donnees/
+screener_donnees/
+__pycache__/
+*.pyc
+.DS_Store

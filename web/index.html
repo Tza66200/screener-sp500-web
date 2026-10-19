@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<title>Screener S&amp;P 500</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="logique.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="entete">
+  <div class="entete-int">
+    <a class="marque" href="#tableau" aria-label="Screener S&amp;P 500, tableau de bord">
+      <svg width="22" height="18" viewBox="0 0 22 18" aria-hidden="true"><rect class="m-1" x="0" y="10" width="4" height="8" rx="1"/><rect class="m-2" x="6" y="7" width="4" height="11" rx="1"/><rect class="m-3" x="12" y="4" width="4" height="14" rx="1"/><rect class="m-4" x="18" y="0" width="4" height="18" rx="1"/></svg>
+      <span>Screener S&amp;P 500</span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#tableau" data-vue="tableau">Tableau de bord</a>
+      <a href="#classement" data-vue="classement">Classement</a>
+      <a href="#portefeuille" data-vue="portefeuille">Portefeuille</a>
+      <a href="#backtest" data-vue="backtest">Backtest</a>
+      <a href="#methode" data-vue="methode">Méthode</a>
+    </nav>
+    <div class="etat-donnees" id="etat-donnees" role="status"><span class="point" aria-hidden="true"></span><span>Chargement…</span></div>
+  </div>
+</header>
+<main id="vue" tabindex="-1">
+  <noscript><p>Cette application a besoin de JavaScript pour afficher le classement.</p></noscript>
+</main>
+<footer class="pied">
+  <p>Outil d'aide à la décision, pas un conseil en investissement. Aucun score ne garantit qu'une action ne baissera pas.</p>
+  <p>Sources : SEC EDGAR, Yahoo Finance, Wikipédia, GitHub fja05680/sp500.</p>
+</footer>
+<div class="infobulle" id="infobulle" role="tooltip" hidden></div>
+</body>
+</html>
