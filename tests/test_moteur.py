@@ -327,6 +327,19 @@ bt_p = sc.lancer_backtest(cfg_p)
 verifier("mode prix : screener et backtest fonctionnent", res_p["classement"]["score"].notna().mean() > 0.9
          and bt_p["navs"]["Stratégie"].notna().all())
 
+# Séance en cours et raisons précises des données insuffisantes
+idx = pd.DatetimeIndex(["2026-10-16", "2026-10-19"])
+ny = lambda s: pd.Timestamp(s, tz="America/New_York")  # noqa: E731
+verifier("cours du jour ignoré tant que la séance de New York est ouverte",
+         sc.seance_en_cours(idx, ny("2026-10-19 12:20")) and not sc.seance_en_cours(idx, ny("2026-10-19 17:00"))
+         and not sc.seance_en_cours(idx, ny("2026-10-20 09:00")))
+raisons = [sc._raison_insuffisance(pd.Series(r), cfg) for r in [
+    {"historique_ok": False}, {"historique_ok": True, "fin": pd.NaT},
+    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 4.0, "actif": 1e9},
+    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 8.0, "actif": float("nan")}]]
+verifier("données insuffisantes : la raison précise est donnée", raisons[0].startswith("Moins de 200 séances")
+         and raisons[1].startswith("Aucun compte récent") and "4 critères" in raisons[2] and "actif" in raisons[3], raisons[2])
+
 print(f"\nRésultat : {len(OK)} tests réussis, {len(KO)} échecs")
 if KO:
     print("Échecs :", KO)

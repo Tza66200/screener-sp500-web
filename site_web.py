@@ -544,6 +544,8 @@ def executer(args) -> dict:
     info("=== Classement du jour ===")
     res = sc.lancer_screener(cfg)
     avertissements = controler(res, cfg, pd.Timestamp(res["date"]).date() if getattr(args, "demo", False) else None)
+    for t, r in res["classement"][res["classement"]["signal"] == "DONNÉES INSUFFISANTES"].iterrows():
+        info(f"  Sans signal : {t} ({texte(r.get('nom'))}) : {texte(r.get('motif'))}")
     sources = {k: dict(v) for k, v in sc.ETAT_SOURCES.items()}
 
     # --- Backtest (hebdomadaire, ou dès que les réglages changent) ---

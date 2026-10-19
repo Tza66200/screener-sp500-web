@@ -1525,6 +1525,23 @@ def calculer_scores(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
 SIGNAUX = ["ACHETER", "GARDER", "SURVEILLER", "VENDRE", "DONNÉES INSUFFISANTES"]
 
 
+def _raison_insuffisance(r: pd.Series, cfg: Config) -> str:
+    """Pourquoi une action n'a pas de signal : le premier manque rencontré."""
+    if not bool(r.get("historique_ok", False)):
+        return "Moins de 200 séances de cours sur la dernière année (introduction en bourse ou scission récente)"
+    if cfg.mode == "complet":
+        fin = r.get("fin")
+        if fin is None or pd.isna(fin):
+            return "Aucun compte récent exploitable à la SEC (société récente, ou dernier rapport trop ancien)"
+        n = pd.to_numeric(r.get("fscore_n"), errors="coerce")
+        if not (np.isfinite(n) and n >= 6):
+            return (f"F-score mesurable sur {int(n) if np.isfinite(n) else 0} critères seulement (6 requis) : "
+                    "comptes XBRL incomplets")
+        if not np.isfinite(pd.to_numeric(r.get("actif"), errors="coerce")):
+            return "Total de l'actif introuvable dans les comptes XBRL"
+    return "Score incalculable : trop d'indicateurs manquants"
+
+
 def attribuer_signaux(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     df = df.copy()
     s = df["score"].astype(float)
@@ -1542,8 +1559,9 @@ def attribuer_signaux(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
             motif[k] = f"Score {_fr(s.iloc[k], 0)} < {cfg.seuil_vente:g} (moitié basse du classement)"
         elif sig == "ACHETER":
             motif[k] = f"Top {100 - cfg.seuil_achat:g} % du classement, filtres de sécurité passés"
-        elif sig == "DONNÉES INSUFFISANTES" and not motif[k]:
-            motif[k] = "Historique de cours ou comptes SEC insuffisants"
+        elif sig == "DONNÉES INSUFFISANTES":
+            raison = _raison_insuffisance(df.iloc[k], cfg)
+            motif[k] = raison + (f" ; {motif[k]}" if motif[k] else "")
     df["motif"] = motif
     return df
 
@@ -1708,6 +1726,15 @@ def debut_prix(cfg: Config) -> pd.Timestamp:
                pd.Timestamp(cfg.debut_backtest) - pd.Timedelta(days=430))
 
 
+def seance_en_cours(index: pd.DatetimeIndex, maintenant: Optional[pd.Timestamp] = None) -> bool:
+    """Vrai si la dernière date est aujourd'hui à New York et que la séance n'est pas close (16 h + marge) :
+    son cours est alors provisoire."""
+    if len(index) == 0:
+        return False
+    now = maintenant if maintenant is not None else pd.Timestamp.now(tz="America/New_York")
+    return pd.Timestamp(index[-1]).date() == now.date() and (now.hour, now.minute) < (16, 30)
+
+
 def _preparer_prix(prix: Dict[str, pd.DataFrame], ref: str = "SPY"):
     """Aligne tout sur les jours de cotation du S&P 500. Renvoie (rendement total, SPY,
     cours ajustés des seules divisions, facteur de divisions)."""
@@ -1715,6 +1742,9 @@ def _preparer_prix(prix: Dict[str, pd.DataFrame], ref: str = "SPY"):
     if ref not in adj_all.columns:
         raise RuntimeError("Le S&P 500 (SPY) n'a pas pu être téléchargé : réessaie dans quelques minutes.")
     spy = adj_all[ref].dropna()
+    if seance_en_cours(spy.index):
+        info(f"Séance du {spy.index[-1].date()} encore ouverte à New York : son cours provisoire est ignoré.")
+        spy = spy.iloc[:-1]
     garder = [c for c in adj_all.columns if c not in ("SPY", "RSP", "^IRX")]
     adj = adj_all.reindex(spy.index)[garder].ffill(limit=5)
     close_split = prix["close"].reindex(index=spy.index, columns=garder).ffill(limit=5)

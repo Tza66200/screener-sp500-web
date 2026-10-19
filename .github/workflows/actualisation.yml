@@ -101,6 +101,8 @@ jobs:
           path: |
             journal.txt
             tests.log
+            _site/data/etat.json
+            _site/data/classement.json
           if-no-files-found: ignore
           retention-days: 7
 
