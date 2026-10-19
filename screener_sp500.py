@@ -70,7 +70,7 @@ import requests
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-VERSION = "1.3"
+VERSION = "1.3.1"
 
 
 # ===========================================================================
@@ -1214,6 +1214,15 @@ def table_fondamentale(faits: pd.DataFrame) -> pd.DataFrame:
     passif, treso, dette, creances, immo = C["passif"], C["treso"], C["dette"], C["creances"], C["immo"]
     actions, q_rn = C["actions"], C["q_rn"]
     jfs = t["jf"].values.astype(float)
+    # Dette introuvable alors qu'elle existe (intérêts versés…) mais publiée au dernier rapport annuel
+    # (Caterpillar, Lennar ne la détaillent pas chaque trimestre) : dernier montant connu de moins d'un an
+    dette = dette.copy()
+    derniere, j_derniere = np.nan, -1e9
+    for k in range(n):
+        if np.isfinite(dette[k]):
+            derniere, j_derniere = dette[k], jfs[k]
+        elif np.isfinite(derniere) and jfs[k] - j_derniere <= 370:
+            dette[k] = derniere
 
     fcf = cfo - capex
     ebitda = ebit + np.nan_to_num(da)
@@ -1678,6 +1687,8 @@ def _raison_insuffisance(r: pd.Series, cfg: Config) -> str:
                     "comptes XBRL incomplets")
         if not np.isfinite(pd.to_numeric(r.get("actif"), errors="coerce")):
             return "Total de l'actif introuvable dans les comptes XBRL"
+    if not np.isfinite(pd.to_numeric(r.get("mom"), errors="coerce")):
+        return "Moins d'un an de cours : momentum sur 12 mois incalculable (introduction en bourse ou scission récente)"
     return "Score incalculable : trop d'indicateurs manquants"
 
 
@@ -2287,6 +2298,12 @@ def lancer_backtest(cfg: Config) -> dict:
         "Couverture des données (moyenne)": float(np.mean(list(couverture.values()))),
     }
     info(f"Backtest terminé en {(time.time() - t0) / 60:.1f} min.")
+    for nom, tab in tables_m.items():
+        def valeurs(ind: str) -> str:
+            return ", ".join(f"{c} {_fr(tab.at[ind, c] * 100)} %" for c in tab.columns
+                             if ind in tab.index and np.isfinite(tab.at[ind, c]))
+        info(f"  {nom} : rendement annualisé {valeurs('Rendement annualisé')} ; "
+             f"perte maximale {valeurs('Perte maximale')}.")
     return {"navs": navs, "metriques": tables_m, "annuel": rendements_annuels(navs), "journal": jr,
             "analyse": analyse, "couverture": pd.Series(couverture), "synthese": synthese,
             "config": asdict(cfg), "debut": navs.index[0], "fin": navs.index[-1],

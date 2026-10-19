@@ -145,6 +145,9 @@ _, lennar = charger(920760)       # Lennar : total de l'actif absent du dernier 
 x = lennar.iloc[-1]
 verifier("Lennar : total de l'actif = total du passif et des capitaux propres",
          x["fin"] == pd.Timestamp("2026-08-31") and abs(x["actif"] - 33378.2e6) < 1e5, f"{x['actif'] / 1e9:.2f} Md$")
+verifier("Lennar : dette détaillée au seul rapport annuel -> dernier montant connu (moins d'un an)",
+         abs(x["dette"] - lennar[lennar["fin"] == "2025-11-30"].iloc[0]["dette"]) < 1 and x["dette"] > 1e9,
+         f"{x['dette'] / 1e9:.2f} Md$")
 _, qnity = charger(2058873)       # Qnity : scission de DuPont (novembre 2025), comparatifs trimestriels absents
 _, blk = charger(2012383)         # BlackRock : nouvelle holding depuis octobre 2024
 pan = sc.panneau_fondamental({2058873: qnity, 2012383: blk})

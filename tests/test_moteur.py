@@ -381,10 +381,12 @@ raisons = [sc._raison_insuffisance(pd.Series(r), cfg) for r in [
     {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 4.0, "actif": 1e9},
     {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 8.0, "actif": float("nan")},
     {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 1.0, "actif": 1e9},
-    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 0.0, "actif": 1e9}]]
+    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 0.0, "actif": 1e9},
+    {"historique_ok": True, "fin": pd.Timestamp("2026-06-30"), "fscore_n": 7.0, "actif": 1e9, "mom": float("nan")}]]
 verifier("données insuffisantes : la raison précise est donnée", raisons[0].startswith("Moins de 200 séances")
          and raisons[1].startswith("Aucun compte récent") and "4 critères" in raisons[2] and "actif" in raisons[3]
-         and "sur 1 critère seulement" in raisons[4] and raisons[5].startswith("F-score non mesurable"),
+         and "sur 1 critère seulement" in raisons[4] and raisons[5].startswith("F-score non mesurable")
+         and raisons[6].startswith("Moins d'un an de cours"),
          " | ".join(raisons[2:]))
 
 print(f"\nRésultat : {len(OK)} tests réussis, {len(KO)} échecs")
