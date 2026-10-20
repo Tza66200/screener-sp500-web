@@ -48,6 +48,7 @@ from __future__ import annotations
 import argparse
 import base64
 import glob
+import gzip
 import hashlib
 import html
 import io
@@ -70,7 +71,7 @@ import requests
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 
 
 # ===========================================================================
@@ -798,8 +799,9 @@ PREDECESSEURS: Dict[int, int] = {
 }
 # Empreinte des règles d'extraction : les faits mis en cache avec d'autres étiquettes sont relus à la SEC
 EMPREINTE_EXTRACTION = hashlib.sha256(json.dumps(
-    {"tags": TAGS, "formulaires": sorted(FORMULAIRES), "colonnes": COLONNES_FAITS}, sort_keys=True
-).encode()).hexdigest()[:10]
+    {"tags": TAGS, "formulaires": sorted(FORMULAIRES), "colonnes": COLONNES_FAITS,
+     "version": 2},          # 2 : rapports absents de l'API lus sur EDGAR
+    sort_keys=True).encode()).hexdigest()[:10]
 
 
 def extraire_faits(js: dict) -> pd.DataFrame:
@@ -837,6 +839,56 @@ def extraire_faits(js: dict) -> pd.DataFrame:
     return df.dropna(subset=["fin", "depot", "val"]).reset_index(drop=True)
 
 
+ARCHIVES_SEC = "https://www.sec.gov/Archives/edgar/data"
+_XBRLI = "{http://www.xbrl.org/2003/instance}"
+
+
+def instance_xbrl_vers_faits(contenu: bytes, accn: str, form: str, depot: str) -> dict:
+    """Instance XBRL d'un rapport -> même structure que l'API « companyfacts » de la SEC.
+
+    Ne garde, comme l'API, que les faits us-gaap et dei sans ventilation (aucun axe). Sert quand l'API
+    n'a pas intégré un rapport pourtant publié sur EDGAR."""
+    import xml.etree.ElementTree as ET   # expat : entités externes ignorées, expansion bornée
+    racine = ET.fromstring(contenu)
+    contextes: Dict[str, Tuple[Optional[str], str]] = {}
+    for ctx in racine.iter(_XBRLI + "context"):
+        entite = ctx.find(_XBRLI + "entity")
+        if (entite is not None and entite.find(_XBRLI + "segment") is not None) \
+                or ctx.find(_XBRLI + "scenario") is not None:
+            continue
+        per = ctx.find(_XBRLI + "period")
+        if per is None:
+            continue
+        inst, deb, fin = (per.find(_XBRLI + x) for x in ("instant", "startDate", "endDate"))
+        if inst is not None and (inst.text or "").strip():
+            contextes[ctx.get("id")] = (None, inst.text.strip()[:10])
+        elif deb is not None and fin is not None and (deb.text or "").strip() and (fin.text or "").strip():
+            contextes[ctx.get("id")] = (deb.text.strip()[:10], fin.text.strip()[:10])
+    unites = {}
+    for u in racine.iter(_XBRLI + "unit"):
+        mesures = u.findall(_XBRLI + "measure")
+        if len(mesures) == 1 and (mesures[0].text or "").strip():
+            unites[u.get("id")] = mesures[0].text.strip().split(":")[-1]
+    faits: Dict[str, dict] = {"us-gaap": {}, "dei": {}}
+    for el in racine:
+        if not isinstance(el.tag, str) or not el.tag.startswith("{"):
+            continue
+        ns, nom = el.tag[1:].split("}", 1)
+        cle = "us-gaap" if "fasb.org/us-gaap" in ns else ("dei" if "xbrl.sec.gov/dei" in ns else None)
+        ctx, unite = contextes.get(el.get("contextRef")), unites.get(el.get("unitRef"))
+        if cle is None or ctx is None or unite is None or not (el.text or "").strip():
+            continue
+        try:
+            val = float(el.text.strip())
+        except ValueError:
+            continue
+        point = {"end": ctx[1], "val": val, "accn": accn, "form": form, "filed": depot}
+        if ctx[0]:
+            point["start"] = ctx[0]
+        faits[cle].setdefault(nom, {"units": {}})["units"].setdefault(unite, []).append(point)
+    return {"facts": faits}
+
+
 class ClientSEC:
     """Accès poli à l'API de la SEC (10 requêtes/s max, adresse de contact obligatoire)."""
     BASE = "https://data.sec.gov"
@@ -852,13 +904,89 @@ class ClientSEC:
         self._dernier = 0.0
         self._carte = None
         self._sic = None
+        self.complements: Dict[int, List[str]] = {}    # rapports lus sur EDGAR faute d'être dans l'API
+        self._echecs_edgar = 0                           # au-delà de 5 échecs, on n'insiste plus (EDGAR saturé)
 
-    def _json(self, url: str) -> dict:
+    def _get(self, url: str) -> requests.Response:
         attente = self.cfg.pause_sec - (time.time() - self._dernier)
         if attente > 0:
             time.sleep(attente)
         self._dernier = time.time()
-        return http_get(url, self.entetes, timeout=60).json()
+        return http_get(url, self.entetes, timeout=60)
+
+    def _json(self, url: str) -> dict:
+        return self._get(url).json()
+
+    def depots(self, cik: int) -> Dict[str, list]:
+        """Derniers dépôts de la société sur EDGAR (API « submissions »), en cache comme les comptes."""
+        chemin = self.cfg.chemin("cache", "sec", f"depots_{int(cik):010d}.json")
+        if _frais(chemin, self.cfg.cache_sec_jours):
+            with open(chemin, encoding="utf-8") as fh:
+                return json.load(fh)
+        rec = self._json(f"{self.BASE}/submissions/CIK{int(cik):010d}.json").get("filings", {}).get("recent", {})
+        garder = {k: list(rec.get(k, [])) for k in ("accessionNumber", "filingDate", "form", "primaryDocument",
+                                                     "isXBRL")}
+        with open(chemin, "w", encoding="utf-8") as fh:
+            json.dump(garder, fh)
+        return garder
+
+    def faits_rapport(self, cik: int, accn: str, form: str, depot: str, document: str) -> pd.DataFrame:
+        """Faits d'un rapport lus dans son instance XBRL sur EDGAR (gardés en cache : un dépôt ne change plus)."""
+        chemin = self.cfg.chemin("cache", "sec", "rapports", f"{accn}.json.gz")
+        if os.path.exists(chemin):
+            with gzip.open(chemin, "rt", encoding="utf-8") as fh:
+                return extraire_faits(json.load(fh))
+        dossier = f"{ARCHIVES_SEC}/{int(cik)}/{accn.replace('-', '')}"
+        try:      # rapport en XBRL intégré (« inline ») : instance extraite par EDGAR, nommée <document>_htm.xml
+            contenu = self._get(f"{dossier}/{document.rsplit('.', 1)[0]}_htm.xml").content
+        except RuntimeError as e:
+            if "HTTP 404" not in str(e):
+                raise
+            noms = [x.get("name", "") for x in self._json(f"{dossier}/index.json").get("directory", {}).get("item", [])]
+            noms = [n for n in noms if n.endswith("_htm.xml")]
+            if not noms:
+                raise RuntimeError(f"aucune instance XBRL dans {dossier}") from e
+            contenu = self._get(f"{dossier}/{noms[0]}").content
+        js = instance_xbrl_vers_faits(contenu, accn, form, depot)
+        with gzip.open(chemin, "wt", encoding="utf-8") as fh:
+            json.dump(js, fh)
+        return extraire_faits(js)
+
+    def completer(self, cik: int, df: pd.DataFrame, jours: int = 500, maximum: int = 4) -> pd.DataFrame:
+        """Ajoute les rapports 10-K / 10-Q récents publiés sur EDGAR mais absents de l'API XBRL de la SEC
+        (constaté en 2026 pour une soixantaine de sociétés : Duke, NextEra, Visa, Coca-Cola…)."""
+        if self._echecs_edgar >= 5:
+            return df
+        try:
+            dep = self.depots(cik)
+        except Exception as e:  # noqa: BLE001
+            self._echecs_edgar += 1
+            info(f"  Liste des dépôts indisponible pour le CIK {cik} ({type(e).__name__}).")
+            return df
+        connus = set(df["accn"].astype(str)) if len(df) else set()
+        limite = (aujourdhui() - pd.Timedelta(days=jours)).strftime("%Y-%m-%d")
+        manquants = [(a, f, d, doc) for a, f, d, doc, x in zip(dep["accessionNumber"], dep["form"], dep["filingDate"],
+                                                               dep["primaryDocument"], dep["isXBRL"])
+                     if f in FORMULAIRES and x and d >= limite and a not in connus and doc][:maximum]
+        morceaux, lus = ([df] if len(df) else []), []
+        for accn, form, depot, doc in manquants:
+            try:
+                morceaux.append(self.faits_rapport(cik, accn, form, depot, doc))
+                lus.append(accn)
+            except Exception as e:  # noqa: BLE001
+                self._echecs_edgar += 1
+                info(f"  Rapport {form} du {depot} (CIK {cik}) illisible sur EDGAR ({type(e).__name__})"
+                     + (" : les rapports manquants suivants sont ignorés." if self._echecs_edgar >= 5 else "."))
+                if self._echecs_edgar >= 5:
+                    break
+        morceaux = [m for m in morceaux if len(m)]
+        if not morceaux:
+            return df
+        out = morceaux[0] if len(morceaux) == 1 else pd.concat(morceaux, ignore_index=True)
+        out.attrs["rapports_edgar"] = lus          # gardé avec la copie en cache
+        if lus:
+            self.complements[int(cik)] = lus
+        return out
 
     def table_tickers(self) -> Dict[str, Tuple[int, str]]:
         if self._carte is None:
@@ -879,7 +1007,10 @@ class ClientSEC:
     def faits(self, cik: int) -> pd.DataFrame:
         chemin = self.cfg.chemin("cache", "sec", f"faits_{int(cik):010d}_{EMPREINTE_EXTRACTION}.pkl")
         if _frais(chemin, self.cfg.cache_sec_jours):
-            return pd.read_pickle(chemin)
+            df = pd.read_pickle(chemin)
+            if df.attrs.get("rapports_edgar"):
+                self.complements[int(cik)] = list(df.attrs["rapports_edgar"])
+            return df
         anciens = sorted(glob.glob(self.cfg.chemin("cache", "sec", f"faits_{int(cik):010d}*.pkl")),
                          key=os.path.getmtime)
         try:
@@ -892,6 +1023,7 @@ class ClientSEC:
                     return pd.read_pickle(anciens[-1])
                 raise
             df = pd.DataFrame(columns=COLONNES_FAITS)
+        df = self.completer(cik, df)
         df.to_pickle(chemin)
         for f in anciens:          # copies faites avec d'anciennes règles d'extraction
             if os.path.abspath(f) != os.path.abspath(chemin):
@@ -1885,7 +2017,13 @@ def charger_comptes(ciks: Sequence[int], sec: ClientSEC) -> Dict[int, pd.DataFra
             info(f"  comptes : {k + 1}/{len(ciks)} ({time.time() - t0:.0f} s)")
     ok = sum(1 for t in tables.values() if t is not None and not t.empty)
     info(f"Comptes SEC : {ok}/{len(ciks)} sociétés exploitables.")
-    ETAT_SOURCES["sec"] = {"societes": len(ciks), "exploitables": ok, "erreurs": erreurs}
+    lus = {c: a for c, a in (getattr(sec, "complements", None) or {}).items() if c in tables}
+    n_lus = sum(len(a) for a in lus.values())
+    if n_lus:
+        info(f"Comptes SEC : {n_lus} rapports récents absents de l'API XBRL de la SEC, lus directement sur EDGAR "
+             f"({len(lus)} sociétés).")
+    ETAT_SOURCES["sec"] = {"societes": len(ciks), "exploitables": ok, "erreurs": erreurs,
+                           "rapports_edgar": n_lus, "societes_edgar": len(lus)}
     return tables
 
 

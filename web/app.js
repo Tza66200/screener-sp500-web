@@ -1334,7 +1334,7 @@
         el("div", { class: "actions-fiche" }, liens.reglages ? externe(liens.reglages, "Modifier les réglages sur GitHub", "bouton principal") : null)));
     const lst = [];
     if (so.cours) lst.push(["Cours (Yahoo Finance)", so.cours.obtenus + " titres sur " + so.cours.demandes + (so.cours.par_alpaca && so.cours.par_alpaca.length ? ", dont " + so.cours.par_alpaca.length + " par Alpaca" : "") + ", dernière séance le " + fDate(so.cours.derniere_seance)]);
-    if (so.sec) lst.push(["Comptes officiels (SEC EDGAR)", so.sec.exploitables + " sociétés exploitables sur " + so.sec.societes]);
+    if (so.sec) lst.push(["Comptes officiels (SEC EDGAR)", so.sec.exploitables + " sociétés exploitables sur " + so.sec.societes + (so.sec.rapports_edgar ? " ; " + so.sec.rapports_edgar + " rapport" + (so.sec.rapports_edgar > 1 ? "s" : "") + " récent" + (so.sec.rapports_edgar > 1 ? "s" : "") + " encore absent" + (so.sec.rapports_edgar > 1 ? "s" : "") + " de l'API XBRL de la SEC, lu" + (so.sec.rapports_edgar > 1 ? "s" : "") + " directement dans les dépôts" : "")]);
     if (so.revisions) lst.push(["Révisions d'analystes (Yahoo Finance)", so.revisions.obtenues + " titres sur " + so.revisions.demandes]);
     if (so.univers) lst.push(["Composition de l'indice", so.univers]);
     if (so.taux) lst.push(["Taux sans risque du backtest", so.taux.source]);
