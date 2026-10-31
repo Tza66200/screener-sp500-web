@@ -1,0 +1,278 @@
+
+1. Moteur point-in-time (TTM, trimestres, première publication)
+  OK  table non vide  (71 lignes)
+  OK  résultat net TTM = somme des 4 trimestres  (71 lignes, écart max 4.44e-16)
+  OK  flux de trésorerie TTM (cumuls uniquement) = somme des 4 trimestres  (écart max 3.33e-16)
+  OK  chiffre d'affaires TTM malgré le changement d'étiquette en 2018  (écart max 3.33e-16)
+  OK  lignes annuelles détectées (10-K)  (18)
+  OK  surprise T4 = (T4 - T4 an passé) / actif
+  OK  valeur retraitée ignorée (première publication conservée)
+  OK  exercice clos en septembre, trimestres de 52/53 semaines : TTM calculés  (96%)
+  OK  banque : F-score calculé sur 7 signaux (une fois l'historique disponible)  ([np.float64(1.0), np.float64(2.0), np.float64(4.0), np.float64(5.0), np.float64(7.0)])
+  OK  F-score entre 0 et 9
+  OK  pas d'anticipation : la veille du dépôt, le 10-K n'est pas visible
+  OK  nouvelle holding : historique des sociétés précédentes repris à l'identique (2 réorganisations)  (19 lignes seule, 71 avec l'historique, 71 attendues)
+
+2. Filtres, scores, signaux, portefeuille
+  OK  F-score 3/9 exclu
+  OK  couverture 1x exclue (non financière)
+  OK  FCF négatif sur 3 ans exclu
+  OK  banques : couverture et FCF ignorés
+  OK  10 % les plus volatils exclus
+  OK  F-score des banques ramené sur 9
+  OK  F-score sur 5 critères : suffisant pour une financière (5 sur 7), pas pour une autre (6 sur 9)
+  OK  accruals négatifs jamais éliminatoires, même parmi les pires du secteur
+  OK  accruals positifs parmi les pires du secteur exclus  (Accruals élevés (6,0 % de l'actif, 10 % les pires du secteur))
+  OK  position GARDER conservée, VENDRE vendue
+  OK  plafond sectoriel et dédoublonnage par CIK respectés  (achats = ['P0', 'P1', 'P3', 'P5'])
+  OK  rendement annualisé exact
+  OK  perte maximale exacte  (-0.29904)
+  OK  ancien ticker renommé suivi sous son nom actuel
+  OK  membre disparu présent dans la composition historique
+  OK  titre ajouté en 2020 absent avant
+  OK  division d'actions : pas comptée comme une émission (signal F-score neutralisé)  ([8.0, 8.0, 8.0, 8.0])
+  OK  division d'actions : nombre d'actions implicite stable (pas de saut x4)  (min 1.51e+09, max 1.59e+09)
+  OK  XBRL depuis 2010 : F-score calculable dès le rapport annuel 2010  (6 signaux, disponible le 2011-02-28)
+  OK  XBRL depuis 2010 : surprise de résultats dès le premier trimestre publié  (premier trimestre 2010-06-30)
+  OK  XBRL depuis 2010 : TTM toujours exacts  (63 lignes)
+
+3. Test complet sur données simulées (screener du jour + backtest + rapports)
+[07:30:39] Comptes SEC : 42 sociétés (environ 1 min la première fois, puis cache local)…
+[07:30:41] Comptes SEC : 42/42 sociétés exploitables.
+[07:30:41] Classement du 2026-10-16 : ACHETER 4, GARDER 7, SURVEILLER 2, VENDRE 29, DONNÉES INSUFFISANTES 0 (2 s).
+  OK  screener : tous les titres classés  (42 titres)
+  OK  screener : scores entre 0 et 100
+  OK  screener : des signaux ACHETER existent  ({'VENDRE': np.int64(29), 'GARDER': np.int64(7), 'ACHETER': np.int64(4), 'SURVEILLER': np.int64(2)})
+  OK  screener : le portefeuille ne contient que des titres valables
+  OK  screener : titre hors indice signalé, pas vendu
+  OK  screener : valorisation calculée  (100% des titres)
+  OK  screener : F-score calculé
+  OK  société multi-classes : capitalisation via le total d'actions du bilan  (1.28e+10)
+  OK  ACHETER respecte les seuils
+  (screener simulé en 2.2 s)
+[07:30:41] Backtest 2011-01-01 → 2026-10-16 : 43 titres ont fait partie de l'indice.
+[07:30:41] Comptes SEC : 42 sociétés (environ 1 min la première fois, puis cache local)…
+[07:30:43] Comptes SEC : 42/42 sociétés exploitables.
+[07:30:43] Calcul des facteurs de prix…
+[07:30:43] Simulation de 189 mois…
+[07:30:44]   2012-12-31 : 24/189 mois simulés
+[07:30:45]   2014-12-31 : 48/189 mois simulés
+[07:30:46]   2016-12-30 : 72/189 mois simulés
+[07:30:47]   2018-12-31 : 96/189 mois simulés
+[07:30:47]   2020-12-31 : 120/189 mois simulés
+[07:30:48]   2022-12-30 : 144/189 mois simulés
+[07:30:49]   2024-12-31 : 168/189 mois simulés
+[07:30:51] Backtest terminé en 0.2 min.
+[07:30:51]   Période complète : rendement annualisé Stratégie 20,8 %, S&P 500 (SPY) 14,5 %, Univers équipondéré 17,4 %, S&P 500 équipondéré (RSP) 12,2 % ; perte maximale Stratégie -22,6 %, S&P 500 (SPY) -23,1 %, Univers équipondéré -27,0 %, S&P 500 équipondéré (RSP) -27,2 %.
+[07:30:51]   Construction (2011-2018) : rendement annualisé Stratégie 15,5 %, S&P 500 (SPY) 13,5 %, Univers équipondéré 15,5 %, S&P 500 équipondéré (RSP) 11,1 % ; perte maximale Stratégie -17,2 %, S&P 500 (SPY) -23,1 %, Univers équipondéré -27,0 %, S&P 500 équipondéré (RSP) -26,6 %.
+[07:30:51]   Validation (2019-2026) : rendement annualisé Stratégie 26,4 %, S&P 500 (SPY) 15,6 %, Univers équipondéré 19,4 %, S&P 500 équipondéré (RSP) 13,3 % ; perte maximale Stratégie -22,6 %, S&P 500 (SPY) -22,9 %, Univers équipondéré -22,3 %, S&P 500 équipondéré (RSP) -27,2 %.
+  OK  backtest : séries complètes  (4100 jours)
+  OK  backtest : valeur toujours positive
+  OK  backtest : démarre en janvier 2011  (2011-01-31)
+  OK  backtest 2011 : moins de 15 % de titres sans données à partir de mars 2011  (maximum 0%)
+  OK  backtest 2011 : positions dès le 1er mois, portefeuille rempli à 75 % au 2e rebalancement  ([3, 6, 7, 8, 8] lignes (univers simulé de 42 titres))
+  OK  backtest : couverture < 100 % avant 2015 (GONE sans cours)  (0.976)
+  OK  backtest : nombre de lignes respecté
+  OK  backtest : rendements annuels cohérents avec la courbe
+  OK  analyse : l'IC de la qualité est positif (signal simulé lié à la qualité)  (IC 12 mois = 0.003)
+  OK  analyse : le faible risque est positif  (IC 12 mois = 0.038)
+  (backtest simulé en 10.4 s)
+  Période complète :
+                                        Stratégie  S&P 500 (SPY)  Univers équipondéré  S&P 500 équipondéré (RSP)
+    Rendement annualisé                         0.208          0.145                0.174                      0.122
+    Volatilité annuelle                         0.163          0.175                0.194                      0.184
+    Ratio de Sharpe                             1.080          0.721                0.795                      0.587
+    Ratio de Sortino                            1.625          1.056                1.167                      0.854
+    Perte maximale                             -0.226         -0.231               -0.270                     -0.272
+    Ratio de Calmar                             0.920          0.630                0.646                      0.449
+    Pire période de 12 mois                    -0.057         -0.128               -0.162                     -0.157
+    Périodes de 12 mois en perte                0.112          0.197                0.185                      0.258
+    Périodes de 12 mois battant le S&P 500      0.691            NaN                0.730                      0.000
+    Bêta vs S&P 500                             0.731          1.000                1.071                      1.050
+  Construction (2011-2018) :
+                                        Stratégie  S&P 500 (SPY)  Univers équipondéré  S&P 500 équipondéré (RSP)
+    Rendement annualisé                         0.155          0.135                0.155                      0.111
+    Volatilité annuelle                         0.160          0.177                0.195                      0.186
+    Ratio de Sharpe                             0.826          0.667                0.706                      0.534
+    Ratio de Sortino                            1.225          0.974                1.030                      0.775
+    Perte maximale                             -0.172         -0.231               -0.270                     -0.266
+    Ratio de Calmar                             0.904          0.586                0.573                      0.419
+    Pire période de 12 mois                    -0.057         -0.128               -0.162                     -0.157
+    Périodes de 12 mois en perte                0.190          0.202                0.214                      0.238
+    Périodes de 12 mois battant le S&P 500      0.583            NaN                0.738                      0.000
+    Bêta vs S&P 500                             0.717          1.000                1.072                      1.050
+  Validation (2019-2026) :
+                                        Stratégie  S&P 500 (SPY)  Univers équipondéré  S&P 500 équipondéré (RSP)
+    Rendement annualisé                         0.264          0.156                0.194                      0.133
+    Volatilité annuelle                         0.165          0.174                0.192                      0.183
+    Ratio de Sharpe                             1.330          0.776                0.885                      0.640
+    Ratio de Sortino                            2.031          1.139                1.309                      0.934
+    Perte maximale                             -0.226         -0.229               -0.223                     -0.272
+    Ratio de Calmar                             1.167          0.680                0.872                      0.488
+    Pire période de 12 mois                    -0.039         -0.103               -0.111                     -0.132
+    Périodes de 12 mois en perte                0.049          0.220                0.183                      0.317
+    Périodes de 12 mois battant le S&P 500      0.756            NaN                0.683                      0.000
+    Bêta vs S&P 500                             0.746          1.000                1.070                      1.050
+[07:30:53] Rapports enregistrés : /tmp/test_moteur_1qbd515z/sortie/resultats/screener_2026-10-16.xlsx et /tmp/test_moteur_1qbd515z/sortie/resultats/screener_2026-10-16.html
+  OK  rapport Excel créé
+  OK  rapport HTML créé
+  OK  Excel : feuilles attendues  (['Classement', 'Portefeuille proposé', 'Mes positions', 'BT Période complète', 'BT Construction', 'BT Validation', 'BT Annuel', 'BT Facteurs', 'BT Quintiles', 'BT Signaux', 'BT Journal', 'BT Valeur', 'Paramètres'])
+  OK  Excel : l'e-mail n'est pas exporté
+[07:30:53] Classement du 2026-10-16 : ACHETER 5, GARDER 11, SURVEILLER 5, VENDRE 21, DONNÉES INSUFFISANTES 0 (0 s).
+[07:30:53] Backtest 2010-06-01 → 2026-10-16 : 43 titres ont fait partie de l'indice.
+[07:30:53] Calcul des facteurs de prix…
+[07:30:53] Simulation de 196 mois…
+[07:30:53]   2012-05-31 : 24/196 mois simulés
+[07:30:54]   2014-05-30 : 48/196 mois simulés
+[07:30:54]   2016-05-31 : 72/196 mois simulés
+[07:30:54]   2018-05-31 : 96/196 mois simulés
+[07:30:55]   2020-05-29 : 120/196 mois simulés
+[07:30:55]   2022-05-31 : 144/196 mois simulés
+[07:30:55]   2024-05-31 : 168/196 mois simulés
+[07:30:55]   2026-05-29 : 192/196 mois simulés
+[07:30:57] Backtest terminé en 0.1 min.
+[07:30:57]   Période complète : rendement annualisé Stratégie 18,1 %, S&P 500 (SPY) 14,3 %, Univers équipondéré 17,2 %, S&P 500 équipondéré (RSP) 11,9 % ; perte maximale Stratégie -25,2 %, S&P 500 (SPY) -23,1 %, Univers équipondéré -27,0 %, S&P 500 équipondéré (RSP) -27,2 %.
+[07:30:57]   Construction (2010-2018) : rendement annualisé Stratégie 18,4 %, S&P 500 (SPY) 13,1 %, Univers équipondéré 15,3 %, S&P 500 équipondéré (RSP) 10,7 % ; perte maximale Stratégie -20,5 %, S&P 500 (SPY) -23,1 %, Univers équipondéré -27,0 %, S&P 500 équipondéré (RSP) -26,6 %.
+[07:30:57]   Validation (2019-2026) : rendement annualisé Stratégie 17,6 %, S&P 500 (SPY) 15,6 %, Univers équipondéré 19,4 %, S&P 500 équipondéré (RSP) 13,3 % ; perte maximale Stratégie -25,2 %, S&P 500 (SPY) -22,9 %, Univers équipondéré -22,3 %, S&P 500 équipondéré (RSP) -27,2 %.
+  OK  mode prix : screener et backtest fonctionnent
+  OK  cours du jour ignoré tant que la séance de New York est ouverte
+[07:30:57] Séance du 2026-10-19 encore ouverte à New York : son cours provisoire est ignoré.
+  OK  séance ouverte ignorée : la dernière séance affichée est la précédente, close
+  OK  données insuffisantes : la raison précise est donnée  (F-score mesurable sur 4 critères seulement (6 requis) : comptes XBRL incomplets | Total de l'actif introuvable dans les comptes XBRL | F-score mesurable sur 1 critère seulement (6 requis) : comptes XBRL incomplets | F-score non mesurable : comptes XBRL incomplets | Moins d'un an de cours : momentum sur 12 mois incalculable (introduction en bourse ou scission récente))
+
+Résultat : 60 tests réussis, 0 échecs
+
+1. Téléchargement Yahoo : format réel de yfinance 1.x (simulé, réseau bloqué ici)
+[07:30:58]   Yahoo limite les requêtes : pause de 45 s puis nouvel essai…
+[07:30:58]   cours : 3/3 titres traités
+  OK  limitation de débit détectée puis nouvel essai  (2 appels)
+  OK  société disparue ignorée, les autres récupérées  (['AAA', 'BBB'])
+  OK  rendement total et cours ajusté des divisions séparés
+  OK  facteur de division : 2 avant, 1 après
+[07:30:58] Cours : téléchargement de 2 titres depuis le 2023-01-01 (quelques minutes la première fois)…
+[07:30:58]   cours : 2/2 titres traités
+  OK  cache du jour réutilisé (aucun nouvel appel)
+
+2. Révisions d'analystes : format réel de eps_trend
+  OK  révision BPA 90 jours = moyenne (exercice, exercice suivant)  (0.0783)
+
+3. SEC : refus sans adresse e-mail
+  OK  adresse e-mail exigée
+  OK  l'e-mail n'est jamais envoyé à Wikipédia ni à GitHub
+
+4. Alpaca (source de secours) : format réel de l'API v2/stocks/bars (simulé)
+  OK  Alpaca : pagination suivie, tickers au format Yahoo  (['AAA', 'BRK-B'])
+  OK  Alpaca : symbole BRK.B demandé avec un point
+  OK  Alpaca : dates de cotation (heure de New York)
+  OK  Alpaca : division 2 pour 1 détectée le bon jour
+  OK  Alpaca : facteur de division 2 avant, 1 après
+  OK  Alpaca : rendement total (dividende) distinct du cours ajusté des divisions
+[07:30:58] Cours : téléchargement de 2 titres depuis le 2016-01-01 (quelques minutes la première fois)…
+[07:30:58]   cours : 2/2 titres traités
+[07:30:58] Cours : 1 titres absents de Yahoo, essai avec Alpaca (source de secours)…
+[07:30:58]   Alpaca : 1 titres complétés.
+  OK  Yahoo + Alpaca : le titre manquant chez Yahoo est complété  (['AAA', 'BRK-B'])
+  OK  Yahoo + Alpaca : la source de secours est tracée  ({'demandes': 2, 'obtenus': 2, 'par_alpaca': ['BRK-B'], 'derniere_seance': '2023-03-31'})
+
+5. Taux sans risque officiel (FRED, série DTB3) : format CSV réel (simulé)
+  OK  FRED : série lue, valeurs manquantes « . » ignorées  (383 jours)
+[07:30:58] FRED indisponible (RuntimeError) : taux sans risque de Yahoo (^IRX) à la place.
+  OK  FRED injoignable : None (le backtest prend ^IRX)
+
+6. Cache des comptes SEC : relu quand les règles d'extraction changent
+  OK  règles d'extraction changées : comptes relus une seule fois, ancienne copie supprimée  (['depots_0000021344.json', 'faits_0000021344_9839489af3.pkl'])
+[07:30:58]   SEC indisponible pour le CIK 21344 : ancienne copie utilisée.
+  OK  SEC en panne : dernière copie utilisée
+
+7. Rapport publié sur EDGAR mais absent de l'API XBRL : lu dans son instance XBRL
+  OK  instance XBRL : faits sans ventilation seulement, comme l'API de la SEC  (4 faits de chiffre d'affaires)
+  OK  rapport absent de l'API : lu sur EDGAR, trimestre de juin 2026 ajouté avec ses 12 mois glissants  (CA 15.96 Md$ au 2026-06-30)
+  OK  comptes complétés gardés en cache, rapport compris
+  OK  rapport déjà lu : relu depuis le cache local, sans nouveau téléchargement
+[07:30:58]   Rapport 10-Q du 2026-07-28 (CIK 936340) illisible sur EDGAR (RuntimeError).
+[07:30:58]   Rapport 10-Q du 2026-07-28 (CIK 936341) illisible sur EDGAR (RuntimeError).
+[07:30:58]   Rapport 10-Q du 2026-07-28 (CIK 936342) illisible sur EDGAR (RuntimeError).
+[07:30:58]   Rapport 10-Q du 2026-07-28 (CIK 936343) illisible sur EDGAR (RuntimeError).
+[07:30:58]   Rapport 10-Q du 2026-07-28 (CIK 936344) illisible sur EDGAR (RuntimeError) : les rapports manquants suivants sont ignorés.
+  OK  EDGAR inaccessible : abandon après 5 échecs, les comptes de l'API restent utilisés
+
+Résultat : 25 tests réussis, 0 échecs
+
+1. Totaux annuels publiés (10-K)
+  OK  Apple 2024 : CA et résultat net  (CA 391.04 (réf. 391.035), RN 93.74 (réf. 93.736))
+  OK  Apple 2025 : CA et résultat net  (CA 416.16 (réf. 416.161), RN 112.01 (réf. 112.01))
+  OK  Coca-Cola 2024 : CA et résultat net  (CA 47.06 (réf. 47.061), RN 10.63 (réf. 10.631))
+  OK  Eli Lilly 2024 : CA et résultat net  (CA 45.04 (réf. 45.043), RN 10.59 (réf. 10.59))
+  OK  General Dynamics 2024 : CA et résultat net  (CA 47.72 (réf. 47.716), RN 3.78 (réf. 3.782))
+  OK  Cardinal Health 2025 : CA et résultat net  (CA 222.58 (réf. 222.578), RN 1.56 (réf. 1.561))
+
+2. Douze mois glissants = somme de 4 trimestres reconstitués indépendamment
+  OK  Apple : CA 12 mois glissants (depuis 2019)  (30 trimestres, écart médian 0.0e+00, max 0.00%)
+  OK  Coca-Cola : CA 12 mois glissants (depuis 2019)  (29 trimestres, écart médian 0.0e+00, max 1.95%)
+  OK  Eli Lilly : CA 12 mois glissants (depuis 2019)  (30 trimestres, écart médian 0.0e+00, max 0.00%)
+  OK  Cardinal Health : CA 12 mois glissants (depuis 2019)  (28 trimestres, écart médian 0.0e+00, max 0.00%)
+
+3. Dette, intérêts et EBIT (étiquettes de repli)
+  OK  Phillips 66 : EBIT reconstitué (résultat net + impôt + intérêts)  (EBIT 9.90 Md, couverture 8.9x)
+  OK  General Dynamics : couverture via la charge nette d'intérêts  (18.7x)
+  OK  General Dynamics : dette totale ~8 Md$  (8.01)
+  OK  Apple : dette (long terme + échéances + billets de trésorerie)  (84.3 Md)
+  OK  Apple : ~14,6 milliards d'actions  (14.59)
+  OK  NVR : dette au bilan non reconnue mais intérêts versés -> inconnue (pas nulle)
+  OK  Incyte : intérêts minimes (locations) -> dette nulle, trésorerie nette
+  OK  Coca-Cola : dette totale 40-50 Md$  (43.8)
+  OK  APA : CA reconstitué (résultat d'exploitation + charges), investissements pétroliers reconnus  (CA 9.52 Md$, capex 2.74 Md$)
+  OK  Eli Lilly : intérêts publiés au seul rapport annuel -> couverture sur le dernier exercice (2025)  (intérêts 895 M$, couverture 38.5x au 2026-06-30)
+  OK  Apple : intérêts plus publiés depuis 2023 -> couverture inconnue (pas de valeur périmée)
+
+4. Indicateurs plausibles pour les 10 sociétés à long historique
+  OK  Apple Inc. : table exploitable, F-score calculable, comptes récents  (69 trimestres, F-score 9.0/9 sur 9 signaux, dernier dépôt 2026-07-31)
+  OK  COCA COLA CO : table exploitable, F-score calculable, comptes récents  (68 trimestres, F-score 9.0/9 sur 9 signaux, dernier dépôt 2026-04-30)
+  OK  ELI LILLY AND COMPANY : table exploitable, F-score calculable, comptes récents  (69 trimestres, F-score 9.0/9 sur 9 signaux, dernier dépôt 2026-08-05)
+  OK  GENERAL DYNAMICS CORPORATION : table exploitable, F-score calculable, comptes récents  (68 trimestres, F-score 7.9/9 sur 8 signaux, dernier dépôt 2026-04-29)
+  OK  Cardinal Health, Inc. : table exploitable, F-score calculable, comptes récents  (67 trimestres, F-score 6.0/9 sur 9 signaux, dernier dépôt 2026-08-11)
+  OK  Phillips 66 : table exploitable, F-score calculable, comptes récents  (58 trimestres, F-score 9.0/9 sur 9 signaux, dernier dépôt 2026-08-05)
+  OK  APA CORPORATION : table exploitable, F-score calculable, comptes récents  (22 trimestres, F-score 7.9/9 sur 8 signaux, dernier dépôt 2026-08-06)
+  OK  INCYTE CORPORATION : table exploitable, F-score calculable, comptes récents  (61 trimestres, F-score 7.0/9 sur 9 signaux, dernier dépôt 2026-04-28)
+  OK  NVR, Inc. : table exploitable, F-score calculable, comptes récents  (65 trimestres, F-score 4.5/9 sur 6 signaux, dernier dépôt 2026-08-05)
+  OK  DTE ENERGY CO : table exploitable, F-score calculable, comptes récents  (68 trimestres, F-score 6.8/9 sur 8 signaux, dernier dépôt 2026-04-30)
+
+5. Cas particuliers des comptes récents
+  OK  Ferguson : 12 mois glissants à travers le changement de date de clôture  (CA 31.963 Md$, F-score sur 7 critères)
+  OK  Waters : F-score complet malgré les trimestres « calendaires » du rapport annuel  (7 critères)
+  OK  Lennar : total de l'actif = total du passif et des capitaux propres  (33.38 Md$)
+  OK  Lennar : dette détaillée au seul rapport annuel -> dernier montant connu (moins d'un an)  (5.87 Md$)
+  OK  scission récente : le dernier rapport complet (annuel 2025) reste en vigueur  (2 critères au dernier trimestre)
+  OK  nouvelle holding : rapport complet retenu  (2025-12-31)
+  OK  ExxonMobil Holdings seule : historique insuffisant (d'où la fusion avec l'ancienne société)
+  OK  Disney : signe inversé d'une charge d'intérêts corrigé (couverture calculée)  (10.2x)
+  OK  Extra Space Storage : EBIT sans ligne d'impôt, dette = somme des lignes du bilan  (EBIT 1.41 Md$, dette 13.6 Md$, couverture 2.5x)
+  OK  Nike : intérêts versés retenus malgré des produits d'intérêts nets  (13.1x)
+  OK  Costco : surprise de résultats du 4e trimestre de 16 semaines  (exercice clos le 2026-08-30)
+
+Résultat : 42 tests réussis, 0 échecs
+
+1. Réglages (reglages.json)
+  OK  reglages.json reprend exactement les réglages par défaut du moteur  ([])
+  OK  options du site lues à part  ({'backtest_prix_depuis_2001': False})
+  OK  caches courts pour l'actualisation quotidienne
+  OK  réglage incorrect refusé avec un message clair (ligne)  (reglages.json n'est pas un JSON valide (ligne 1, colonne 31) : Illegal trailing comma befo)
+  OK  réglage incorrect refusé avec un message clair (inconnu)  (Réglage inconnu : « seuil_achatt ». Vérifie l'orthographe dans le fichier de réglages.)
+  OK  réglage incorrect refusé avec un message clair (seuil)  (Réglage invalide : il faut 0 ≤ seuil_vente ≤ seuil_garder ≤ seuil_achat ≤ 100)
+  OK  réglage incorrect refusé avec un message clair (invalide)  (Réglage « n_positions » : valeur invalide ('beaucoup').)
+
+2. Deux actualisations successives (veille, puis jour même)
+[07:31:01] === Classement du jour ===
+[07:31:01] Comptes SEC : 60 sociétés (environ 1 min la première fois, puis cache local)…
+[07:31:04]   comptes : 50/60 (2 s)
+[07:31:04] Comptes SEC : 60/60 sociétés exploitables.
+[07:31:04] Classement du 2026-10-15 : ACHETER 5, GARDER 10, SURVEILLER 3, VENDRE 42, DONNÉES INSUFFISANTES 0 (3 s).
+Traceback (most recent call last):
+  File "/home/runner/work/screener-sp500-web/screener-sp500-web/tests/test_site.py", line 87, in <module>
+    e1 = sw.executer(args())
+  File "/home/runner/work/screener-sp500-web/screener-sp500-web/site_web.py", line 591, in executer
+    avertissements = controler(res, cfg, pd.Timestamp(res["date"]).date() if getattr(args, "demo", False) else None)
+  File "/home/runner/work/screener-sp500-web/screener-sp500-web/site_web.py", line 261, in controler
+    raise ErreurQualite(f"Les cours ne sont pas à jour : dernière séance disponible le {d:%d/%m/%Y} "
+                        f"({retard} jours). Yahoo Finance renvoie peut-être des données figées.")
+site_web.ErreurQualite: Les cours ne sont pas à jour : dernière séance disponible le 15/10/2026 (16 jours). Yahoo Finance renvoie peut-être des données figées.
