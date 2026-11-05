@@ -1,5 +1,6 @@
 """Application web : réglages, construction du site sur données simulées, historique, secours en cas d'échec,
 contrôles de qualité, absence de fuite de l'adresse e-mail, et logique JavaScript identique au moteur Python."""
+import datetime as dt
 import glob
 import json
 import os
@@ -47,6 +48,15 @@ D = demo.installer(sc, n=60)
 VRAI_SCREENER = sc.lancer_screener
 
 
+def fixer_date(jour):
+    """Fige la date des données simulées ET l'horloge du site sur le soir de cette séance. Le contrôle de
+    fraîcheur compare la dernière séance à la date du jour : avec la date réelle, ce test échouait dès que la
+    date simulée avait plus de 5 jours, ce qui bloquait toutes les actualisations du site."""
+    D["fixer_date"](jour)
+    soir = dt.datetime.fromisoformat(jour).replace(hour=23, minute=30, tzinfo=dt.timezone.utc)
+    sw.maintenant = lambda: soir
+
+
 def args(**k):
     base = dict(sortie=os.path.join(TMP, "_site"), donnees=os.path.join(TMP, "donnees"),
                 historique=os.path.join(TMP, "historique"), reglages=os.path.join(RACINE, "reglages.json"),
@@ -83,9 +93,9 @@ for contenu, attendu in [('{"signaux": {"seuil_achat": 90,}}', "ligne"), ('{"sig
 
 # ---------------------------------------------------------------------------
 print("\n2. Deux actualisations successives (veille, puis jour même)")
-D["fixer_date"]("2026-10-15")
+fixer_date("2026-10-15")
 e1 = sw.executer(args())
-D["fixer_date"]("2026-10-16")
+fixer_date("2026-10-16")
 e2 = sw.executer(args())
 site = os.path.join(TMP, "_site")
 attendus = ["index.html", "app.js", "logique.js", "style.css", "favicon.svg", "polices/OFL.txt",
