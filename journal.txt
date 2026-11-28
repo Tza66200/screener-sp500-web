@@ -1,0 +1,73 @@
+[15:48:24] === Classement du jour ===
+[15:48:24] Cours : téléchargement de 504 titres depuis le 2009-10-28 (quelques minutes la première fois)…
+[15:48:28]   cours : 60/504 titres traités
+[15:48:33]   cours : 120/504 titres traités
+[15:48:38]   cours : 180/504 titres traités
+[15:48:43]   cours : 240/504 titres traités
+[15:48:48]   cours : 300/504 titres traités
+[15:48:53]   cours : 360/504 titres traités
+[15:48:58]   cours : 420/504 titres traités
+[15:49:03]   cours : 480/504 titres traités
+[15:49:06]   cours : 504/504 titres traités
+[15:49:07] Comptes SEC : 500 sociétés (environ 3 min la première fois, puis cache local)…
+[15:49:10]   comptes : 50/500 (3 s)
+[15:49:13]   comptes : 100/500 (5 s)
+[15:49:15]   comptes : 150/500 (8 s)
+[15:49:18]   comptes : 200/500 (11 s)
+[15:49:21]   comptes : 250/500 (13 s)
+[15:49:23]   comptes : 300/500 (16 s)
+[15:49:26]   comptes : 350/500 (19 s)
+[15:49:29]   comptes : 400/500 (22 s)
+[15:49:31]   comptes : 450/500 (24 s)
+[15:49:33]   comptes : 500/500 (26 s)
+[15:49:33] Comptes SEC : 500/500 sociétés exploitables.
+[15:49:33] Comptes SEC : 61 rapports récents absents de l'API XBRL de la SEC, lus directement sur EDGAR (40 sociétés).
+[15:49:33] Capitalisation : 6 titres complétés via Yahoo (ARES, BRK-B, STZ, ERIE, HSY, V).
+[15:49:36] Classement du 2026-11-27 : ACHETER 39, GARDER 107, SURVEILLER 30, VENDRE 323, DONNÉES INSUFFISANTES 4 (72 s).
+[15:49:36]   Sans signal : FDXF (FedEx Freight) : Moins de 200 séances de cours sur la dernière année (introduction en bourse ou scission récente); Dette nette/EBITDA 4,1 (10 % les plus endettés du secteur); Free cash-flow négatif (cumul 3 ans ou 12 derniers mois); Accruals élevés (8,2 % de l'actif, 10 % les pires du secteur)
+[15:49:36]   Sans signal : HONA (Honeywell Aerospace) : Moins de 200 séances de cours sur la dernière année (introduction en bourse ou scission récente)
+[15:49:36]   Sans signal : SKYD (Skydance) : F-score mesurable sur 3 critères seulement (6 requis) : comptes XBRL incomplets; Volatilité 58 % (10 % les plus volatils de l'indice)
+[15:49:36]   Sans signal : VYLR (Vylor) : Moins de 200 séances de cours sur la dernière année (introduction en bourse ou scission récente)
+[15:49:36] Backtest : recalcul (demandé).
+[15:49:37] Composition historique : 2720 dates, du 1996-01-02 au 2026-08-18.
+[15:49:37] Backtest 2011-01-01 → 2026-11-28 : 811 titres ont fait partie de l'indice.
+[15:49:37] Cours : 310 titres à compléter…
+[15:49:40]   cours : 60/310 titres traités
+[15:49:44]   cours : 120/310 titres traités
+[15:49:48]   cours : 180/310 titres traités
+[15:49:53]   cours : 240/310 titres traités
+[15:49:57]   cours : 300/310 titres traités
+[15:49:59]   cours : 310/310 titres traités
+[15:50:00] Cours : 646 titres disponibles, 168 sans données chez Yahoo (sociétés rachetées, en faillite ou ticker changé).
+[15:50:00] Secteurs des anciens membres : 140 sociétés…
+[15:50:00] Comptes SEC : 620 sociétés (environ 4 min la première fois, puis cache local)…
+[15:50:07]   comptes : 50/620 (7 s)
+[15:50:14]   comptes : 100/620 (14 s)
+[15:50:22]   comptes : 150/620 (22 s)
+[15:50:28]   comptes : 200/620 (28 s)
+[15:50:37]   comptes : 250/620 (37 s)
+[15:50:43]   comptes : 300/620 (43 s)
+[15:50:51]   comptes : 350/620 (51 s)
+[15:50:55]   comptes : 400/620 (55 s)
+[15:51:04]   comptes : 450/620 (64 s)
+[15:51:12]   comptes : 500/620 (72 s)
+[15:51:18]   comptes : 550/620 (78 s)
+[15:51:27]   comptes : 600/620 (87 s)
+[15:51:29] Comptes SEC : 616/620 sociétés exploitables.
+[15:51:29] Comptes SEC : 68 rapports récents absents de l'API XBRL de la SEC, lus directement sur EDGAR (45 sociétés).
+[15:51:29] Calcul des facteurs de prix…
+[15:51:30] Simulation de 190 mois…
+[15:51:32]   2012-12-31 : 24/190 mois simulés
+[15:51:33]   2014-12-31 : 48/190 mois simulés
+[15:51:35]   2016-12-30 : 72/190 mois simulés
+[15:51:37]   2018-12-31 : 96/190 mois simulés
+[15:51:38]   2020-12-31 : 120/190 mois simulés
+[15:51:40]   2022-12-30 : 144/190 mois simulés
+[15:51:42]   2024-12-31 : 168/190 mois simulés
+[15:51:47] Backtest terminé en 2.2 min.
+[15:51:47]   Période complète : rendement annualisé Stratégie 12,3 %, S&P 500 (SPY) 13,5 %, Univers équipondéré 12,7 %, S&P 500 équipondéré (RSP) 11,8 % ; perte maximale Stratégie -34,7 %, S&P 500 (SPY) -33,7 %, Univers équipondéré -39,8 %, S&P 500 équipondéré (RSP) -39,0 %.
+[15:51:47]   Construction (2011-2018) : rendement annualisé Stratégie 13,2 %, S&P 500 (SPY) 11,0 %, Univers équipondéré 11,4 %, S&P 500 équipondéré (RSP) 10,1 % ; perte maximale Stratégie -16,9 %, S&P 500 (SPY) -19,3 %, Univers équipondéré -21,5 %, S&P 500 équipondéré (RSP) -22,9 %.
+[15:51:47]   Validation (2019-2026) : rendement annualisé Stratégie 11,5 %, S&P 500 (SPY) 16,1 %, Univers équipondéré 14,0 %, S&P 500 équipondéré (RSP) 13,6 % ; perte maximale Stratégie -34,7 %, S&P 500 (SPY) -33,7 %, Univers équipondéré -39,8 %, S&P 500 équipondéré (RSP) -39,0 %.
+[15:51:49] Instantané enregistré : historique/2026/2026-11-27.csv
+[15:51:50] Site construit dans _site en 206 s : 503 titres, ACHETER 39, GARDER 107, SURVEILLER 30, VENDRE 323, DONNÉES INSUFFISANTES 4
+::notice title=Classement du 27/11/2026::ACHETER 39, GARDER 107, SURVEILLER 30, VENDRE 323, DONNÉES INSUFFISANTES 4. Backtest : recalculé.
